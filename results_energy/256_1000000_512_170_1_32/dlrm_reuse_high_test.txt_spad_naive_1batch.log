@@ -1,0 +1,103 @@
+[DEBUG] script_dir: /workspace/src
+[DEBUG] yaml_config_path: /workspace/configs/spad_naive.yaml
+[DEBUG] Vector Unit - Lanes: 128, Sublanes: 8, ALUs per sublanes: 4
+[DEBUG] Matrix Unit - MXU dimension: 128, Number of MXUs: 4
+[DEBUG] Memory - Type: spad, Size: 262144 KB, Policy: spad_naive
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 General Simulation Configuration 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╠════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║ Dataset: /workspace/datasets/dlrm/reuse_high_test.txt                                              ║
+║ Numeric format: 8 bits                                                                             ║
+║ Num batches: 1                                                                                     ║
+║ Num tables: 512                                                                                    ║
+║ Batch Size (samples per batch): 32                                                                 ║
+║ Vectors per table: 1000000                                                                         ║
+║ Lookups per sample: 170                                                                            ║
+║ Embedding Dimension 256                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+(Time elapsed(s) in model and data gen:   0.501116sec)
+[DEBUG] lS_i shape: (1, 512, 5440)
+[DEBUG] addr_trace shape: (1, 512, 10880)
+Starting multiprocessing with 31 cores...
+(Time elapsed(s) in address generation:   7.698320sec)
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 On-Chip Memory Configuration 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╠════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║ Memory size: 268435456 B (256 MB)                                                                  ║
+║ Memory type: spad                                                                                  ║
+║ Memory policy: spad_naive                                                                          ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+[DEBUG] t_i: 0
+[DEBUG] t_i: 1
+[DEBUG] on_mem has 2097152 elements.
+on mem data structure size: 65536.21 KB
+(Time elapsed(s) in create memory structure:   2.989384sec)
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 Simulation Start 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+Simulation for batch 0...
+Simulation Done
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 Simulation Results 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╠════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║ Total hit ratio: 0.0020                                                                            ║
+║ Total accesses: 5570560                                                                            ║
+║ Total hits: 11396                                                                                  ║
+║ Total misses: 5559164                                                                              ║
+║                                                                                                    ║
+║ Per batch results:                                                                                 ║
+║ [Batch 0] hit ratio: 0.0020 accesses: 5570560 hits: 11396 misses: 5559164                          ║
+║ [Batch 0] spad load: 0                                                                             ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+(Time elapsed(s) in do simulation:   0.550023sec)
+
+
+
+ START RUNTIME CALCULATION 
+
+Setting parameters for runtime model...
+Calculating runtime model...
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 Runtime Model Results 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╠════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║ Total Runtime: 1360.0 cycles                                                                       ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+(Time elapsed(s) in do execution time calculation:   0.000056sec)
+[DEBUG] workload_type: dlrm
+
+
+
+ START ENERGY ESTIMATION 
+
+Setting parameters for energy estimation...
+Setting workload configuration...
+Setting energy table configuration...
+ [DEBUG] action type and count for op 0: add 708837376.0
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 Energy Estimation Results 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 Energy Estimation Results 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╠════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║ Total Energy: 31157966080.000 pJ                                                                   ║
+║ Off-chip Memory Energy: 31131318400.000 pJ (99.91%)                                                ║
+║ On-chip Memory Energy: 5382558.720 pJ (0.02%)                                                      ║
+║ Operations Energy:                                                                                 ║
+║   - Operation 0: 21265121.280 pJ (0.07%)                                                           ║
+║                                                                                                    ║
+║ Per-Batch Energy:                                                                                  ║
+║   - Batch 0:                                                                                       ║
+║     Total Energy: 31157966080.000 pJ                                                               ║
+║     Off-chip Memory Energy: 31131318400.000 pJ                                                     ║
+║     On-chip Memory Energy: 5382558.720 pJ                                                          ║
+║     Operations Energy:                                                                             ║
+║       - Operation 0: 21265121.280 pJ                                                               ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+(Time elapsed(s) in energy estimation:   0.002445sec)

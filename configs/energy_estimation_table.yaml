@@ -1,0 +1,26 @@
+# Currently, the values are based on the Horowitz's energy model.
+# TODO: Change the values based on the results of Accelergy
+energy_45nm:
+  offchip: 43.75 # pJ/byte
+  global_buffer: 3.69 # pJ/byte
+  local_buffer: 1.25 # pJ/byte
+  int8:
+    add: 0.03 # pJ
+    mul: 0.2 # pJ
+    cmp: 0.03 # pJ # TODO: need to be updated with the actual compare energy
+  fp32:
+    add: 0.9 # pJ
+    mul: 3.7 # pJ
+    cmp: 0.9 # pJ # TODO: need to be updated with the actual compare energy
+energy_7nm: # Test values, not much accurate
+  offchip: 43.75 # pJ/byte
+  global_buffer: 1.5375 # pJ/byte
+  local_buffer: 0.9375 # pJ/byte
+  int8:
+    add: 0.007 # pJ
+    mul: 0.07 # pJ
+    cmp: 0.007 # pJ # TODO: need to be updated with the actual compare energy
+  fp32:
+    add: 0.38 # pJ
+    mul: 1.31 # pJ
+    cmp: 0.38 # pJ # TODO: need to be updated with the actual compare energy

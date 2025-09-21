@@ -1,0 +1,26 @@
+dlrm:
+  num_op_types: 1
+  op0:
+    op_type: "vadd"
+    access_per_op: 170
+    num_op: 169
+wikipedia:
+  num_op_types: 0
+vectordb:
+  num_op_types: 4
+  op0: #vadd
+    op_type: "vadd"
+    access_per_op: 1
+    num_op: 1
+  op1: #vmul
+    op_type: "vmul"
+    access_per_op: 1
+    num_op: 1
+  op2: #add
+    op_type: "add"
+    access_per_op: 1
+    num_op: 127
+  op3: #cmp
+    op_type: "cmp"
+    access_per_op: 1
+    num_op: 1

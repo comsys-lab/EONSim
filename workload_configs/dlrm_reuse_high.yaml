@@ -1,0 +1,7 @@
+workload_type: dlrm
+embedding_dim: 96
+vectors_per_table: 250000000
+num_tables: 1
+pooling_factor: 2500000
+EMBS="$EMB_DIM,$EMB_ROW,$EMB_TBL,$EMB_POOL"
+NUM_FORMAT=8

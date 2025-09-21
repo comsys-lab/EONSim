@@ -1,0 +1,14 @@
+vector_unit:
+  lanes: 128
+  sublanes: 8
+  ALUs_per_sublanes: 4
+
+matrix_unit:
+  mxu_dimension: 128
+  num_mxus: 4
+
+memory:
+  mem_size: 262144
+  mem_type: profile
+  policy: dynamic_count
+  access_granularity: 128
