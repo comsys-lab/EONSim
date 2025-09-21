@@ -10,7 +10,7 @@ EONSim is an neural processing unit (NPU) simulator focusing on embedding vector
 
 
 ## EONSim Overview (Working in Progress)
-The figure below shows an overview of EVASim.
+The figure below shows an overview of EONSim.
 
 <p align="center">
     <img src="github_figures/eonsim_overview.svg" width="700"/>
