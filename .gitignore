@@ -14,7 +14,8 @@ src/test_lru_cache.py
 
 
 ### Temporal Results
-
+offmem_trace.txt
+offmem_trace_flat.txt
 
 ### Temporal or Large Datasets
 

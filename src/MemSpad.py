@@ -49,6 +49,11 @@ class MemSpad:
         ### this is only for configuring the spm-oracle
         self.prof_multiplier = prof_multiplier
         
+        # self.offmem_trace has the same dimension as self.emb_dataset, storing the off-chip memory access trace (with -1 init)
+        self.offmem_trace = [[np.full_like(self.emb_dataset[nb][nt], -1) for nt in range(len(self.emb_dataset[nb]))] for nb in range(len(self.emb_dataset))]
+        print("[DEBUG] self.offmem_trace shape: ({}, {}, {})".format(len(self.offmem_trace), len(self.offmem_trace[0]), len(self.offmem_trace[0][0])))
+        
+        
         self.spad_size = np.floor(self.mem_size / self.mem_gran).astype(np.int32)
         
     def set_policy(self, policy):
@@ -197,7 +202,10 @@ class MemSpad:
                             num_hit += 1
                         else:
                             num_miss += 1
-                    
+                            # update the offmem_trace
+                            miss_idx = np.where(self.emb_dataset[nb][nt]==vec)
+                            self.offmem_trace[nb][nt][miss_idx] = vec
+
                     # if self.mem_policy == "spad_oracle":
                         ### Table-wise oracular profiling
                         # self.table_counter = min(self.table_counter + 1, len(self.emb_dataset[nb])-1)

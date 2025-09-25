@@ -286,6 +286,35 @@ if __name__ == "__main__":
     mem_struct.do_simulation()
     helper.end_timer("do simulation")
     
+    # store the mem_struct.offmem_trace to a txt file for debug
+    # first, flatten the offmem_trace 3D array to 1D array
+    flat_offmem_trace = [addr for sublist in mem_struct.offmem_trace for tbl in sublist for addr in tbl]
+    with open("offmem_trace_flat.txt", "w") as f:
+        for addr in flat_offmem_trace:
+            f.write(str(addr) + "\n")
+    f.close()
+    
+    # with open("offmem_trace.txt", "w") as f:
+    #     for i in range(len(mem_struct.offmem_trace)):
+    #         for j in range(len(mem_struct.offmem_trace[i])):
+    #             for k in range(len(mem_struct.offmem_trace[i][j])):
+    #                 f.write(str(mem_struct.offmem_trace[i][j][k]) + ",")
+    #             f.write("\n")
+    #         f.write("\n")
+    # f.close()
+    
+    # print the ratio of -1 and other values in mem_struct.offmem_trace    
+    total_elements = 0
+    minus_one_count = 0
+    
+    for addr in flat_offmem_trace:
+        total_elements += 1
+        if addr == -1:
+            minus_one_count += 1
+    print("[DEBUG] total elements in mem_struct.offmem_trace: {}".format(total_elements))
+    print("[DEBUG] -1 count in mem_struct.offmem_trace: {}".format(minus_one_count))
+    print("[DEBUG] -1 ratio in mem_struct.offmem_trace: {:.4f}".format(minus_one_count/total_elements))
+    
     #-------------------------------------------------------------------
     
     ##################################
