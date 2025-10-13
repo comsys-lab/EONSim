@@ -194,30 +194,24 @@ class MemSpad:
             print("Simulation for batch {}...".format(nb))
             with tqdm(total=len(self.emb_dataset[nb]), desc="Simulation") as pbar:
                 for nt in range(len(self.emb_dataset[nb])):                           
-                    # hit_mask = np.isin(self.emb_dataset[nb][nt], self.on_mem)  # hit_mask is a boolean array between table_data and self.on_mem
-                    # num_hit += np.sum(hit_mask) 
-                    # num_miss += np.sum(~hit_mask)
-                    for vec in self.emb_dataset[nb][nt]:
-                        if vec in self.on_mem:
-                            num_hit += 1
-                        else:
-                            num_miss += 1
-                            # update the offmem_trace
-                            miss_idx = np.where(self.emb_dataset[nb][nt]==vec)
-                            self.offmem_trace[nb][nt][miss_idx] = vec
-
-                    # if self.mem_policy == "spad_oracle":
-                        ### Table-wise oracular profiling
-                        # self.table_counter = min(self.table_counter + 1, len(self.emb_dataset[nb])-1)
-                        # self.on_mem = self.set_spad()
+                    # Convert on_mem set to numpy array for vectorized operations
+                    if isinstance(self.on_mem, set):
+                        on_mem_array = np.array(list(self.on_mem), dtype=np.int64)
+                    else:
+                        on_mem_array = self.on_mem
+                    
+                    # Use vectorized isin operation to find hits
+                    hit_mask = np.isin(self.emb_dataset[nb][nt], on_mem_array)
+                    
+                    # Count hits and misses
+                    num_hit += np.sum(hit_mask)
+                    num_miss += np.sum(~hit_mask)
+                    
+                    # Update offmem_trace for misses - vectorized operation
+                    miss_mask = ~hit_mask
+                    self.offmem_trace[nb][nt][miss_mask] = self.emb_dataset[nb][nt][miss_mask]
                     
                     pbar.update(1)
-                    
-                ### Batch-wise oracular profiling
-                # if self.mem_policy == "spad_oracle":
-                #     self.batch_counter = min(self.batch_counter + 1, len(self.emb_dataset)-1)
-                #     self.on_mem = self.set_spad()
-                #     num_spad_load += self.spad_size
                     
                 ### Oracular profiling using a profiling period
                 if self.mem_policy == "spad_oracle":

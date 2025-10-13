@@ -24,7 +24,7 @@ EMB_TBL=512 # 512
 EMB_POOL=170
 EMBS="$EMB_DIM,$EMB_ROW,$EMB_TBL,$EMB_POOL"
 
-NUM_BATCH=1
+NUM_BATCH=2
 BS=32
 
 # Set PROF_MULTIPLIER to $2 if provided, otherwise default to 1

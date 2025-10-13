@@ -6,11 +6,14 @@ from MemCache import MemCache
 from MemProfile import MemProfile
 from EnergyEstimator import EnergyEstimator
 from RuntimeModel import RuntimeModel
+from MemoryModel import MemoryModel
 import argparse
 import sys
 import numpy as np
 import os
 import yaml
+import subprocess
+import shutil
 
 ## Credit: Original code from Rishabh; Assisting the args parser
 def dash_separated_ints(value):
@@ -68,6 +71,10 @@ if __name__ == "__main__":
     parser.add_argument("--profiling-multiplier", type=int, default=1)
     parser.add_argument("--workload-type", type=str, default="dlrm")
     
+    # mNPUsim related parameters
+    parser.add_argument("--offchip-memory-config", type=str, default="dram_config/total_dram_config/single_hbm3_819gbs.cfg")
+    parser.add_argument("--npumem-config", type=str, default="npumem_config/npumem_architecture_list/single.txt")
+    
     # argparses
     args = parser.parse_args()
     mem_config_file = args.memory_config
@@ -83,20 +90,24 @@ if __name__ == "__main__":
     prof_multiplier = args.profiling_multiplier
     workload_type = args.workload_type
     
+    # mNPUsim related configurations
+    offchip_memory_config = args.offchip_memory_config
+    npumem_config = args.npumem_config
+    mnpusim_path = "/home/choi/simulators/mNPUsim"
+    
     # Parse the memory config file - YAML format
     script_dir = os.path.dirname(os.path.abspath(__file__))
     print(f"[DEBUG] script_dir: {script_dir}")
     
-    # Try YAML format first
-    yaml_config_path = os.path.join(os.path.dirname(script_dir), 
-                                  'configs', 
-                                  f'{mem_config_file}.yaml')
-    print(f"[DEBUG] yaml_config_path: {yaml_config_path}")
+    # Set up config paths
+    config_path = os.path.join(os.path.dirname(script_dir), 'configs', f'{mem_config_file}.yaml')
+    mnpusim_config_path = os.path.join(os.path.dirname(script_dir), 'configs', 'mNPUsim_related')
+    print(f"[DEBUG] yaml_config_path: {config_path}")
+    print(f"[DEBUG] mnpusim_config_path: {mnpusim_config_path}")
     
-    # Fallback to .config format
-    config_path = os.path.join(os.path.dirname(script_dir), 
-                                  'configs', 
-                                  f'{mem_config_file}.config')
+    # Try YAML format first
+    yaml_config_path = config_path
+    print(f"[DEBUG] yaml_config_path: {yaml_config_path}")
     
     mem_type = None
     mem_policy = None
@@ -230,12 +241,12 @@ if __name__ == "__main__":
     helper.end_timer("address generation")
     
     # temporal test: store reqgen.addr_trace np array in a txt file, each element in each row in the txt file.
-    # with open("addr_trace.txt", "w") as f:
+    # with open("rand_.txt", "w") as f:
     #     for i in range(len(reqgen.addr_trace)):
     #         for j in range(len(reqgen.addr_trace[i])):
     #             for k in range(len(reqgen.addr_trace[i][j])):
-    #                 # f.write(str(reqgen.addr_trace[i][j][k]) + "\n")
-    #                 f.write(str(reqgen.addr_trace[i][j][k]) + ",")
+    #                 f.write(str(reqgen.addr_trace[i][j][k]) + "\n")
+    #                 # f.write(str(reqgen.addr_trace[i][j][k]) + ",")
     #             # f.write("\n")
     # f.close()
     
@@ -260,7 +271,7 @@ if __name__ == "__main__":
         second_last_slash = fname[:last_slash].rfind('/')
         file_name = fname[last_slash:]
         profiled_path = fname[:second_last_slash+1] + 'profiled_datasets' + file_name
-        print("[DEBUG] profiled_path: {}".format(profiled_path))
+        # print("[DEBUG] profiled_path: {}".format(profiled_path))
         # print("[DEBUG] argument of mem_struct: {}, {}, {}, {}, {}, {}, {}, {}".format(mem_size, mem_type, emb_dim, emb_dataset, vectors_per_table, mem_gran, n_format_byte, profiled_path))
         
         mem_struct = MemProfile(mem_size, mem_type, cache_config, emb_dim, emb_dataset, vectors_per_table, mem_gran, n_format_byte, profiled_path, prof_multiplier)        
@@ -286,34 +297,16 @@ if __name__ == "__main__":
     mem_struct.do_simulation()
     helper.end_timer("do simulation")
     
-    # store the mem_struct.offmem_trace to a txt file for debug
-    # first, flatten the offmem_trace 3D array to 1D array
-    flat_offmem_trace = [addr for sublist in mem_struct.offmem_trace for tbl in sublist for addr in tbl]
-    with open("offmem_trace_flat.txt", "w") as f:
-        for addr in flat_offmem_trace:
-            f.write(str(addr) + "\n")
-    f.close()
+    #-------------------------------------------------------------------
     
-    # with open("offmem_trace.txt", "w") as f:
-    #     for i in range(len(mem_struct.offmem_trace)):
-    #         for j in range(len(mem_struct.offmem_trace[i])):
-    #             for k in range(len(mem_struct.offmem_trace[i][j])):
-    #                 f.write(str(mem_struct.offmem_trace[i][j][k]) + ",")
-    #             f.write("\n")
-    #         f.write("\n")
-    # f.close()
+    ####################################################
+    ### Off-chip Memory Simulation using mNPUsim ###
+    ####################################################
     
-    # print the ratio of -1 and other values in mem_struct.offmem_trace    
-    total_elements = 0
-    minus_one_count = 0
-    
-    for addr in flat_offmem_trace:
-        total_elements += 1
-        if addr == -1:
-            minus_one_count += 1
-    print("[DEBUG] total elements in mem_struct.offmem_trace: {}".format(total_elements))
-    print("[DEBUG] -1 count in mem_struct.offmem_trace: {}".format(minus_one_count))
-    print("[DEBUG] -1 ratio in mem_struct.offmem_trace: {:.4f}".format(minus_one_count/total_elements))
+    helper.set_timer()
+    memory_model = MemoryModel(script_dir, mem_struct.offmem_trace, mnpusim_path, mnpusim_config_path, offchip_memory_config, npumem_config)
+    memory_model.do_memory_simulation()
+    helper.end_timer("off-chip memory simulation")
     
     #-------------------------------------------------------------------
     
@@ -321,10 +314,10 @@ if __name__ == "__main__":
     ### Execution Time Calculation ###
     ##################################
     
-    helper.set_timer()
-    compute_time = RuntimeModel(workload_type, emb_dim, num_tables, bsz, num_indices_per_lookup, vector_lanes, vector_sublanes, vector_alus_per_sublanes, mxu_dimension, num_mxus)
-    compute_time.do_runtime_calculation()
-    helper.end_timer("do execution time calculation")
+    # helper.set_timer()
+    # compute_time = RuntimeModel(workload_type, emb_dim, num_tables, bsz, num_indices_per_lookup, vector_lanes, vector_sublanes, vector_alus_per_sublanes, mxu_dimension, num_mxus)
+    # compute_time.do_runtime_calculation()
+    # helper.end_timer("do execution time calculation")
     
     #-------------------------------------------------------------------
     

@@ -10,13 +10,21 @@ src/test_lru_cache.py
 
 ### Temporal Scripts
 
-# EVASim/run_sim_tf.sh
 
 
 ### Temporal Results
 offmem_trace.txt
 offmem_trace_flat.txt
+intermediate
+off_chip_memory_cycles_spad_off_1_batchsize.csv
+off_chip_memory_cycles_spad_off_1_tables.csv
+results_onmem/
+results_val/
+results_val_forv6e/
+results_val_forv6e_tables_b128/
+results_val_forv6e_tables_b256/
 
 ### Temporal or Large Datasets
-
+datasets/vectordb/deep250m_100m.txt
+datasets/vectordb/deep250m_small_100m.txt
 

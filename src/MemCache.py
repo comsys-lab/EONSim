@@ -55,6 +55,10 @@ class MemCache:
         
         self.n_format_byte = n_format_byte
         
+        # Initialize offmem_trace with same structure as emb_dataset (storing off-chip memory access trace with -1 init)
+        self.offmem_trace = [[np.full_like(self.emb_dataset[nb][nt], -1) for nt in range(len(self.emb_dataset[nb]))] for nb in range(len(self.emb_dataset))]
+        print("[DEBUG] self.offmem_trace shape: ({}, {}, {})".format(len(self.offmem_trace), len(self.offmem_trace[0]), len(self.offmem_trace[0][0])))
+        
     def set_policy(self, policy):
         if (self.mem_type == "cache" and not policy.startswith("cache_")):
             assert False, f"Invalid policy: '{policy}' for mem_type: '{self.mem_type}'"
@@ -146,18 +150,26 @@ class MemCache:
                 print("Processing batch {}...".format(nb))
                 with tqdm(total=len(self.emb_dataset[nb])*len(self.emb_dataset[nb][0]), desc="Processing") as pbar:
                     for nt in range(len(self.emb_dataset[nb])):
+                        # Create hit mask array for this table to enable vectorized offmem_trace update
+                        hit_mask = np.zeros(len(self.emb_dataset[nb][nt]), dtype=bool)
+                        
                         for vec in range(len(self.emb_dataset[nb][nt])):
                             this_tag = self.get_tag_bits(self.emb_dataset[nb][nt][vec])
                             this_index = self.get_index_bits(self.emb_dataset[nb][nt][vec])
                             # print("[DEBUG] this_addr:{}   this_index:{}   this_tag: {}".format(self.emb_dataset[nb][nt][vec], this_index, this_tag))
                             if self.on_mem[this_index].search_and_access(this_tag): # tag matching
                                 num_hit = num_hit + 1
+                                hit_mask[vec] = True
                             else:
                                 self.on_mem[this_index].insert_node(this_tag)
                                 num_miss = num_miss + 1
+                                # hit_mask[vec] remains False
                             # self.on_mem[this_index].print_list()
                             pbar.update(1)
                         
+                        # Vectorized update: store addresses for misses in offmem_trace
+                        miss_mask = ~hit_mask
+                        self.offmem_trace[nb][nt][miss_mask] = self.emb_dataset[nb][nt][miss_mask]
                 
                 self.access_results.append([num_hit, num_miss]) # add the results for each batch
             
@@ -172,6 +184,9 @@ class MemCache:
             print("Processing batch {}...".format(nb))
             with tqdm(total=len(self.emb_dataset[nb])*len(self.emb_dataset[nb][0]), desc="Processing") as pbar:
                 for nt in range(len(self.emb_dataset[nb])):
+                    # Create hit mask array for this table to enable vectorized offmem_trace update
+                    hit_mask = np.zeros(len(self.emb_dataset[nb][nt]), dtype=bool)
+                    
                     for vec in range(len(self.emb_dataset[nb][nt])):
                         this_tag = self.get_tag_bits(self.emb_dataset[nb][nt][vec])
                         this_index = self.get_index_bits(self.emb_dataset[nb][nt][vec])
@@ -181,10 +196,12 @@ class MemCache:
                         
                         if len(tag_match) > 0: # Cache hit
                             num_hit += 1
+                            hit_mask[vec] = True
                             # Update RRPV to 0 on hit
                             self.on_mem[this_index][tag_match[0], 1] = 0
                         else: # Cache miss
                             num_miss += 1
+                            # hit_mask[vec] remains False
                             if len(self.on_mem[this_index]) < self.cache_way:
                                 # Add new entry with RRPV_insert
                                 new_entry = np.array([[this_tag, self.rrpv_insert]])
@@ -209,6 +226,10 @@ class MemCache:
                                         )
                         
                         pbar.update(1)
+                    
+                    # Vectorized update: store addresses for misses in offmem_trace
+                    miss_mask = ~hit_mask
+                    self.offmem_trace[nb][nt][miss_mask] = self.emb_dataset[nb][nt][miss_mask]
             
             self.access_results.append([num_hit, num_miss])
     
@@ -221,14 +242,19 @@ class MemCache:
             print("Processing batch {}...".format(nb))
             with tqdm(total=len(self.emb_dataset[nb])*len(self.emb_dataset[nb][0]), desc="Processing") as pbar:
                 for nt in range(len(self.emb_dataset[nb])):
+                    # Create hit mask array for this table to enable vectorized offmem_trace update
+                    hit_mask = np.zeros(len(self.emb_dataset[nb][nt]), dtype=bool)
+                    
                     for vec in range(len(self.emb_dataset[nb][nt])):
                         this_tag = self.get_tag_bits(self.emb_dataset[nb][nt][vec])
                         this_index = self.get_index_bits(self.emb_dataset[nb][nt][vec])
                         
                         if this_tag in self.on_mem[this_index]: # cache hit
                             num_hit = num_hit + 1
+                            hit_mask[vec] = True
                         else: # cache miss
                             num_miss = num_miss + 1
+                            # hit_mask[vec] remains False
                             if len(self.on_mem[this_index]) < (self.cache_way): # there is an empty way
                                 self.on_mem[this_index] = np.append(self.on_mem[this_index], this_tag)
                             else: # there is an empty way, replacement is required
@@ -238,6 +264,10 @@ class MemCache:
                         
                         curr_cycle = curr_cycle + 1
                         pbar.update(1)
+                    
+                    # Vectorized update: store addresses for misses in offmem_trace
+                    miss_mask = ~hit_mask
+                    self.offmem_trace[nb][nt][miss_mask] = self.emb_dataset[nb][nt][miss_mask]
                     # print("DEBUG"+str(len(self.on_mem)))
                     # print("DEBUG"+str(self.on_mem[0].shape))
             
@@ -252,10 +282,14 @@ class MemCache:
             print("Processing batch {}...".format(nb))
             with tqdm(total=len(self.emb_dataset[nb])*len(self.emb_dataset[nb][0]), desc="Processing") as pbar:
                 for nt in range(len(self.emb_dataset[nb])):
+                    # Create hit mask array for this table to enable vectorized offmem_trace update
+                    hit_mask = np.zeros(len(self.emb_dataset[nb][nt]), dtype=bool)
+                    
                     for vec in range(len(self.emb_dataset[nb][nt])):
                         # if not np.isin(self.emb_dataset[nb][nt][vec], self.profile_filter):
                         if not self.emb_dataset[nb][nt][vec] in self.profile_filter:
                             num_miss = num_miss + 1
+                            # hit_mask[vec] remains False (miss due to profile filter)
                             pbar.update(1)
                             continue
                         else:
@@ -263,10 +297,17 @@ class MemCache:
                             this_index = self.get_index_bits(self.emb_dataset[nb][nt][vec])
                             if self.on_mem[this_index].search_and_access(this_tag): # tag matching
                                 num_hit = num_hit + 1
+                                hit_mask[vec] = True
                             else:
                                 self.on_mem[this_index].insert_node(this_tag)
                                 num_miss = num_miss + 1
+                                # hit_mask[vec] remains False
                             pbar.update(1)
+                    
+                    # Vectorized update: store addresses for misses in offmem_trace
+                    miss_mask = ~hit_mask
+                    self.offmem_trace[nb][nt][miss_mask] = self.emb_dataset[nb][nt][miss_mask]
+                    
             self.batch_counter = min(self.batch_counter + 1, len(self.emb_dataset)-1)
             self.create_on_mem()
             
@@ -295,8 +336,8 @@ class MemCache:
         for i in range(len(self.access_results)):
             batch_hit_ratio = self.access_results[i][0] / (self.access_results[i][0] + self.access_results[i][1])
             content.append(
-                f"[Batch {i}] hit ratio: {batch_hit_ratio:.4f}   accesses: {self.access_results[i][0]+self.access_results[i][1]}   "
-                f"hits: {self.access_results[i][0]}   misses: {self.access_results[i][1]}"
+                f"[Batch {i}] hit ratio: {batch_hit_ratio:.4f}   accesses: {self.access_results[i][0]+self.access_results[i][1]}   hits: {self.access_results[i][0]}   misses: {self.access_results[i][1]}"
             )
+        
         
         print_styled_box("Simulation Results", content)
