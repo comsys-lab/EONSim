@@ -1,82 +1,100 @@
 import numpy as np
 
-class Node: # You can think a node as a "cache line", and each cache line contains a memory address.
+class Node:
+    """Doubly-linked list node for LRU cache"""
     def __init__(self, addr=None):
-        self.addr = addr  # memory address
-        self.next = None  # Next node pointer (if there is no next node, it becomes None)
+        self.addr = addr
+        self.prev = None
+        self.next = None
 
 class LRUlist:
+    """Hash map + doubly-linked list based LRU cache for O(1) operations"""
     def __init__(self, cache_way):
-        self.head = Node(None)
-        self.cache_way = cache_way # Length of the linked list == cache_way
+        self.cache_way = cache_way
+        self.cache_map = {}  # addr -> Node mapping for O(1) lookup
         
-        # Init the linked list with null (number of nodes==cache_way).
-        current = self.head
-        for _ in range(1, cache_way):
-            current.next = Node(None)
-            current = current.next
+        # Dummy head and tail nodes to simplify edge cases
+        self.head = Node()
+        self.tail = Node()
+        self.head.next = self.tail
+        self.tail.prev = self.head
+        
+        self.size = 0
 
     def get_cache_way(self):
         return self.cache_way
 
-    def insert_node(self, value):
-        new_node = Node(value)
-        if not self.head:  # if list is empty
-            self.head = new_node
+    def _remove_node(self, node):
+        """Remove node from doubly-linked list"""
+        prev_node = node.prev
+        next_node = node.next
+        prev_node.next = next_node
+        next_node.prev = prev_node
+
+    def _add_to_front(self, node):
+        """Add node right after head (most recently used position)"""
+        node.prev = self.head
+        node.next = self.head.next
+        self.head.next.prev = node
+        self.head.next = node
+
+    def insert_node(self, addr):
+        """Insert new address into cache"""
+        if addr in self.cache_map:
+            # Already exists, just move to front
+            node = self.cache_map[addr]
+            self._remove_node(node)
+            self._add_to_front(node)
             return
-
-        # if the list already has a head node.
-        new_node.next = self.head
-        self.head = new_node
-
-        current = self.head
-        prev = None
-        count = 0
-        while current and count < self.cache_way:
-            prev = current
-            current = current.next
-            count += 1
         
-        if prev and prev.next:
-            prev.next = None
+        # Create new node
+        new_node = Node(addr)
+        self.cache_map[addr] = new_node
+        self._add_to_front(new_node)
+        self.size += 1
+        
+        # Evict LRU if over capacity
+        if self.size > self.cache_way:
+            lru_node = self.tail.prev
+            self._remove_node(lru_node)
+            del self.cache_map[lru_node.addr]
+            self.size -= 1
 
-    def search_and_access(self, addr_to_find):
-        # Find the node -> if hit: that node becomes a new head, if miss: replacement.
-        current = self.head
-        prev = None
+    def search_and_access(self, addr):
+        """Search for address and move to front if found. Returns True on hit."""
+        if addr not in self.cache_map:
+            return False
+        
+        # Cache hit: move to front (most recently used)
+        node = self.cache_map[addr]
+        self._remove_node(node)
+        self._add_to_front(node)
+        return True
 
-        # Searching the node
-        while current:
-            if current.addr == addr_to_find: # FOUND=Cache hit!
-                if prev:  # if not current==head (if node is a head, then prev==None)
-                    prev.next = current.next  # remove the node from the list
-                    current.next = self.head  # The node becomes a new head
-                    self.head = current # The node becomes a new head
-                return True
-            prev = current
-            current = current.next
-            
-        return False # Cache miss
+    def is_empty(self):
+        """Check if cache is empty"""
+        return self.size == 0
 
     def return_as_array(self):
-        # Preallocate list with known size for better performance
-        addr_list = [0] * self.cache_way
-        current = self.head
-        idx = 0
+        """Return cache contents as numpy array (MRU to LRU order)"""
+        addr_list = []
+        current = self.head.next
         
-        # Fill the list with addresses
-        while current and idx < self.cache_way:
-            addr_list[idx] = current.addr if current.addr is not None else 0
+        # Traverse from head to tail (MRU to LRU)
+        while current != self.tail and len(addr_list) < self.cache_way:
+            addr_list.append(current.addr if current.addr is not None else 0)
             current = current.next
-            idx += 1
-            
-        # Convert to numpy array with int64 dtype
+        
+        # Pad with zeros if needed
+        while len(addr_list) < self.cache_way:
+            addr_list.append(0)
+        
         return np.array(addr_list, dtype=np.int64)
 
     def print_list(self):
-        # This method is for debugging.
-        current = self.head
-        while current:
+        """Print cache contents for debugging (MRU to LRU)"""
+        current = self.head.next
+        while current != self.tail:
             print(current.addr, end=" -> ")
             current = current.next
         print("End")

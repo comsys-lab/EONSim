@@ -1,6 +1,5 @@
 from Helper import Helper, print_styled_box
 from ReqGenerator import ReqGenerator
-from ReqGenerator_temp_criteo import ReqGenerator_temp_criteo # This is for temporal test
 from MemSpad import MemSpad
 from MemCache import MemCache
 from MemProfile import MemProfile
@@ -90,14 +89,16 @@ if __name__ == "__main__":
     prof_multiplier = args.profiling_multiplier
     workload_type = args.workload_type
     
+    # Script dir setup
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    print(f"[DEBUG] script_dir: {script_dir}")
+    
     # mNPUsim related configurations
     offchip_memory_config = args.offchip_memory_config
     npumem_config = args.npumem_config
-    mnpusim_path = "/home/choi/simulators/mNPUsim"
-    
-    # Parse the memory config file - YAML format
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    print(f"[DEBUG] script_dir: {script_dir}")
+    # mnpusim_path = "/home/choi/simulators/mNPUsim"
+    mnpusim_path = os.path.join(os.path.dirname(script_dir), 'tools', 'mNPUsim')
+    print(f"[DEBUG] mnpusim_path: {mnpusim_path}")
     
     # Set up config paths
     config_path = os.path.join(os.path.dirname(script_dir), 'configs', f'{mem_config_file}.yaml')

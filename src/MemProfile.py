@@ -8,8 +8,8 @@ from LRUlist import LRUlist
 from tqdm import tqdm
 from Helper import print_styled_header, print_styled_box
 from itertools import chain
-from lru_cache import LRUCache
 from srrip_cache import SRRIPCache
+from srrip_list import SRRIPList  # Add Python-based SRRIP implementation
 
 class MemProfile:
     def __init__(self, mem_size, mem_type, cache_config, emb_dim, emb_dataset, vectors_per_table, mem_gran, n_format_byte, profiled_path, prof_multiplier=1):
@@ -115,7 +115,7 @@ class MemProfile:
         if self.mem_policy == "profile_dynamic_cache":            
             # self.logger_size = int((self.mem_size / self.emb_dim) / self.n_format_byte) * self.access_per_vector # multiply access_per_vector to enable the vector-level LRU cache simulation
             self.logger_size = self.spad_size # access-level logging -> after all, the logger should be able to contain all the entries in the spad (vector-level logging is meaningless)
-            self.logger = LRUCache(self.logger_size) # it simulates fully associative LRU cache
+            self.logger = LRUlist(self.logger_size) # Changed: use Python-based LRUlist instead of C++ LRUCache
             # print the number of vectors that the logger can contain assuming that logger performs vector-level logging in real implementation (not in this simulation)
             print("[DEBUG] logger can contain {} vectors".format(int(self.logger_size / self.access_per_vector)))
         elif self.mem_policy == "profile_dynamic_SRRIP":
@@ -188,33 +188,14 @@ class MemProfile:
                 if self.mem_policy == "profile_dynamic_cache":
                     on_mem_set = self.logger.return_as_array()[:self.spad_size]
                 elif self.mem_policy == "profile_dynamic_SRRIP":
-                    # PYTHON VERSION
                     on_mem_set = np.zeros(self.spad_size, dtype=np.int64)
                     for i in range(self.cache_set):
-                        # self.logger[i][:self.cache_way, 0]가 self.cache_way보다 작을 수 있음. 이 경우 0으로 채워줘야 함.
                         this_logger_len = len(self.logger[i])
                         if this_logger_len < self.cache_way:
-                            # print("[DEBUG] this_logger_len: {}".format(this_logger_len))
+                            # if self.logger[i][:self.cache_way, 0] < self.cache_way -> Zero padding
                             on_mem_set[i*self.cache_way:(i+1)*self.cache_way] = np.pad(self.logger[i][:this_logger_len, 0], (0, self.cache_way-this_logger_len), 'constant')
                         else:
                             on_mem_set[i*self.cache_way:(i+1)*self.cache_way] = self.logger[i][:self.cache_way, 0]
-                            
-                    # CPP MODULE VERSION
-                    # on_mem_set = np.zeros(self.spad_size, dtype=np.int64)
-                    # num_sets = self.logger.get_num_sets()
-                    
-                    # for i in range(num_sets):
-                    #     # Get entries for this set with their RRPV values
-                    #     set_entries = self.logger.get_set_entries(i)
-                    #     this_logger_len = self.logger.get_num_entries(i)
-                        
-                    #     if this_logger_len < self.cache_way:
-                    #         # Use numpy pad for consistent behavior with Python version
-                    #         entries = set_entries[:this_logger_len, 0]
-                    #         padded_entries = np.pad(entries, (0, self.cache_way-this_logger_len), 'constant')
-                    #         on_mem_set[i*self.cache_way:(i+1)*self.cache_way] = padded_entries
-                    #     else:
-                    #         on_mem_set[i*self.cache_way:(i+1)*self.cache_way] = set_entries[:self.cache_way, 0]
                 
                 print("[DEBUG] on_mem_set type: {}, shape: {}, dtype: {}".format(type(on_mem_set), on_mem_set.shape, on_mem_set.dtype))
                 print("[DEBUG] on_mem_set[0]: {}, on_mem_set[-1]: {}".format(on_mem_set[0], on_mem_set[-1]))
@@ -384,7 +365,6 @@ class MemProfile:
             self.logger_results.append([logger_hit, logger_miss])
             # print("[DEBUG] result appended for batch {}".format(nb))
     
-    # PYTHON VERSION
     def do_simulation_SRRIP(self):
         dynamic_counter = 0
         sample_rate = 1
@@ -483,59 +463,6 @@ class MemProfile:
     #                     for j in range(len(self.logger[i])):
     #                         f.write(f"{self.logger[i][j][0]}\n")
     #             f.close()
-    
-    # CPP MODULE VERSION
-    # def do_simulation_SRRIP(self):
-    #     dynamic_counter = 0
-    #     dynamic_counter_threshold_init = 10
-    #     vectors_in_batch = list(chain.from_iterable(self.emb_dataset[0]))
-        
-    #     dynamic_counter_threshold = max(len(vectors_in_batch), dynamic_counter_threshold_init)
-    #     print("[DEBUG] dynamic_counter_threshold: {}".format(dynamic_counter_threshold))
-        
-    #     # Initialize the C++ SRRIP cache
-    #     # srrip_logger = SRRIPCache(self.cache_way, self.rrpv_bits, self.rrpv_insert)
-        
-    #     self.logger_results = []
-        
-    #     for jj in range(len(self.emb_dataset)):
-    #         num_hit = 0
-    #         num_miss = 0
-    #         num_spad_load = 0
-    #         logger_hit = 0
-    #         logger_miss = 0
-            
-    #         nb = 0  # DEBUG
-            
-    #         print("Simulation for batch {}...".format(nb))
-    #         vectors_in_batch = list(chain.from_iterable(self.emb_dataset[nb]))
-    #         with tqdm(total=len(vectors_in_batch), desc=f"Batch {nb}") as pbar:
-    #             for vec in vectors_in_batch:
-    #                 # Check cache hit or miss
-    #                 is_hit = vec in self.on_mem_set
-    #                 if is_hit:
-    #                     num_hit += 1
-    #                 else:
-    #                     num_miss += 1
-                    
-    #                 # Update the logger using C++ implementation
-    #                 if self.logger.access(vec):
-    #                     logger_hit += 1
-    #                 else:
-    #                     logger_miss += 1
-                    
-    #                 # periodically update the spad
-    #                 dynamic_counter += 1
-    #                 if dynamic_counter == dynamic_counter_threshold:
-    #                     self.on_mem = self.set_spad()
-    #                     num_spad_load += self.spad_size
-    #                     dynamic_counter = 0
-                    
-    #                 pbar.update(1)
-            
-    #         self.access_results.append([num_hit, num_miss])
-    #         self.spad_load_results.append(num_spad_load)
-    #         self.logger_results.append([logger_hit, logger_miss])
 
     def do_simulation_dcount(self):
         dynamic_counter = 0

@@ -281,6 +281,6 @@ class MemoryModel:
             # content_lines.append("Simulation Status: Failed")
             content_lines.append("Off-chip Memory Cycles: N/A")
             
-        content_lines.append(f"Results Directory: {self.intermediate_dir}")
+        # content_lines.append(f"Results Directory: {self.intermediate_dir}")
         
         print_styled_box("Off-chip Memory Simulation Results", content_lines)

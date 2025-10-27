@@ -28,3 +28,5 @@ results_val_forv6e_tables_b256/
 datasets/vectordb/deep250m_100m.txt
 datasets/vectordb/deep250m_small_100m.txt
 
+### temp
+tools/mNPUsim
