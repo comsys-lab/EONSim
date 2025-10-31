@@ -1,0 +1,5 @@
+numpy==1.26.0
+PyYAML==6.0.2
+torch==2.5.0
+torchviz==0.0.3
+tqdm==4.66.5
