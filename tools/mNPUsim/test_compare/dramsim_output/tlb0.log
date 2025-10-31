@@ -1,0 +1,5 @@
+cycle, virtual address (hex), physical address (hex), npu_idx, miss?
+0, 0, 0, 0, 1
+0, 0, 0, 0, 0
+606, 0, 0, 0, 0
+606, 0, 0, 0, 0

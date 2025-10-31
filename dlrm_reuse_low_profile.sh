@@ -12,20 +12,20 @@ mkdir -p $OUT
 data_path_dir="$(pwd)/datasets/"
 # dataset_list=("dlrm/reuse_medium_table_1M.txt")
 # dataset_list=("dlrm/reuse_high_table_1M.txt")
-dataset_list=("dlrm/reuse_low_trunc.txt")
+dataset_list=("dlrm/reuse_low_trunc2.txt")
 ###############
 
 ### simulation parameters ###
 MEM_CFG=$1 # spad_naive
 EMB_DIM=128
 EMB_ROW=1000000 #1000000
-EMB_TBL=512 # 512
+EMB_TBL=250 # 512
 EMB_POOL=150
 EMBS="$EMB_DIM,$EMB_ROW,$EMB_TBL,$EMB_POOL"
-NUM_FORMAT=8
+NUM_FORMAT=32
 
 NUM_BATCH=2
-BS=32
+BS=128
 
 # Set PROF_MULTIPLIER to $2 if provided, otherwise default to 1
 PROF_MULTIPLIER=${2:-1}

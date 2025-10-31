@@ -1,0 +1,136 @@
+[DEBUG] script_dir: /home/choi/EONSim/src
+[DEBUG] mnpusim_path: /home/choi/EONSim/tools/mNPUsim
+[DEBUG] yaml_config_path: /home/choi/EONSim/configs/cache_LRU.yaml
+[DEBUG] mnpusim_config_path: /home/choi/EONSim/configs/mNPUsim_related
+[DEBUG] yaml_config_path: /home/choi/EONSim/configs/cache_LRU.yaml
+[DEBUG] Vector Unit - Lanes: 128, Sublanes: 8, ALUs per sublanes: 4
+[DEBUG] Matrix Unit - MXU dimension: 128, Number of MXUs: 4
+[DEBUG] Memory - Type: cache, Size: 32768 KB, Policy: cache_LRU
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 General Simulation Configuration 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╠════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║ Dataset: /home/choi/EONSim/datasets/dlrm/reuse_medium_test.txt                                     ║
+║ Numeric format: 8 bits                                                                             ║
+║ Num batches: 2                                                                                     ║
+║ Num tables: 60                                                                                     ║
+║ Batch Size (samples per batch): 512                                                                ║
+║ Vectors per table: 1000000                                                                         ║
+║ Lookups per sample: 120                                                                            ║
+║ Embedding Dimension 128                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+(Time elapsed(s) in model and data gen:   0.793538sec)
+[DEBUG] lS_i shape: (2, 60, 61440)
+[DEBUG] addr_trace shape: (2, 60, 61440)
+Starting multiprocessing with 127 cores...
+(Time elapsed(s) in address generation:  16.581311sec)
+[DEBUG] self.offmem_trace shape: (2, 60, 61440)
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 On-Chip Memory Configuration 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╠════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║ Memory size: 33554432 B (32 MB)                                                                    ║
+║ Memory type: cache                                                                                 ║
+║ Memory policy: cache_LRU                                                                           ║
+║ Cache way: 16-way                                                                                  ║
+║ Cache line size: 128 B                                                                             ║
+║ Cache set: 16384 sets                                                                              ║
+║ Cache tag bits: 27 bits                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+on mem data structure size: 133.43 KB
+(Time elapsed(s) in create memory structure:   0.032866sec)
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 Simulation Start 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+Processing batch 0...
+Processing batch 1...
+Simulation Done
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 Simulation Results 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╠════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║ Total hit ratio: 0.6603                                                                            ║
+║ Total accesses: 7372800                                                                            ║
+║ Total hits: 4868301                                                                                ║
+║ Total misses: 2504499                                                                              ║
+║ ----------------------------------------                                                           ║
+║ Per batch results                                                                                  ║
+║ [Batch 0] hit ratio: 0.6602   accesses: 3686400   hits: 2433628   misses: 1252772                  ║
+║ [Batch 1] hit ratio: 0.6604   accesses: 3686400   hits: 2434673   misses: 1251727                  ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+(Time elapsed(s) in do simulation:  12.107403sec)
+
+
+
+ START OFF-CHIP MEMORY SIMULATION 
+
+[DEBUG] Starting off-chip memory simulation...
+[DEBUG] Created intermediate directory: /home/choi/EONSim/intermediate_995051
+[DEBUG] Created eonsim_results directory name: eonsim_results_656080
+[DEBUG] Removed existing dram_config directory
+[DEBUG] Removed existing npumem_config directory
+[DEBUG] Copied dram_config from /home/choi/EONSim/configs/mNPUsim_related/dram_config to /home/choi/EONSim/tools/mNPUsim/eonsim_config/dram_config
+[DEBUG] Copied npumem_config from /home/choi/EONSim/configs/mNPUsim_related/npumem_config to /home/choi/EONSim/tools/mNPUsim/eonsim_config/npumem_config
+[DEBUG] Generated trace file: /home/choi/EONSim/intermediate_995051/offmem_trace_flat.txt
+[DEBUG] Total elements in offmem_trace: 3686400
+[DEBUG] -1 count in offmem_trace: 2434673
+[DEBUG] -1 ratio in offmem_trace: 0.6604
+[DEBUG] DRAM config path: eonsim_config/dram_config/total_dram_config/single_hbm3_819gbs.cfg
+[DEBUG] NPU memory config path: eonsim_config/npumem_config/npumem_architecture_list/single.txt
+[DEBUG] DRAM config file verified: /home/choi/EONSim/tools/mNPUsim/eonsim_config/dram_config/total_dram_config/single_hbm3_819gbs.cfg
+[DEBUG] NPU memory config file verified: /home/choi/EONSim/tools/mNPUsim/eonsim_config/npumem_config/npumem_architecture_list/single.txt
+[DEBUG] Executing mnpusim...
+[DEBUG] LD_LIBRARY_PATH: /home/choi/EONSim/tools/mNPUsim/DRAMsim3
+[DEBUG] mnpusim execution completed. Output saved to /home/choi/EONSim/intermediate_995051/output.txt
+[DEBUG] Copied result directory to /home/choi/EONSim/intermediate_995051/result
+[RESULT] mNPUsim cycles: 8185802
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 Off-chip Memory Simulation Results 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╠════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║ Off-chip Memory Cycles: 8185802                                                                    ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+[DEBUG] Cleaned up intermediate directory: /home/choi/EONSim/intermediate_995051
+[DEBUG] Cleaned up eonsim_results directory: /home/choi/EONSim/tools/mNPUsim/eonsim_results_656080
+(Time elapsed(s) in off-chip memory simulation:  52.258634sec)
+[DEBUG] workload_type: dlrm
+
+
+
+ START ENERGY ESTIMATION 
+
+Setting parameters for energy estimation...
+Setting workload configuration...
+Setting energy table configuration...
+ [DEBUG] action type and count for op 0: add 469089920.0
+ [DEBUG] action type and count for op 0: add 469089920.0
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 Energy Estimation Results 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 Energy Estimation Results 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╠════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║ Total Energy: 16352735723.520 pJ                                                                   ║
+║ Off-chip Memory Energy: 14025194400.000 pJ (85.77%)                                                ║
+║ On-chip Memory Energy: 2299395928.320 pJ (14.06%)                                                  ║
+║ Operations Energy:                                                                                 ║
+║   - Operation 0: 28145395.200 pJ (0.17%)                                                           ║
+║                                                                                                    ║
+║ Per-Batch Energy:                                                                                  ║
+║   - Batch 0:                                                                                       ║
+║     Total Energy: 8179047074.560 pJ                                                                ║
+║     Off-chip Memory Energy: 7015523200.000 pJ                                                      ║
+║     On-chip Memory Energy: 1149451176.960 pJ                                                       ║
+║     Operations Energy:                                                                             ║
+║       - Operation 0: 14072697.600 pJ                                                               ║
+║   - Batch 1:                                                                                       ║
+║     Total Energy: 8173688648.960 pJ                                                                ║
+║     Off-chip Memory Energy: 7009671200.000 pJ                                                      ║
+║     On-chip Memory Energy: 1149944751.360 pJ                                                       ║
+║     Operations Energy:                                                                             ║
+║       - Operation 0: 14072697.600 pJ                                                               ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+(Time elapsed(s) in energy estimation:   0.003368sec)

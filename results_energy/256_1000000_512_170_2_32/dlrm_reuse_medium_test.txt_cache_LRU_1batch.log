@@ -1,4 +1,5 @@
 [DEBUG] script_dir: /home/choi/EONSim/src
+[DEBUG] mnpusim_path: /home/choi/EONSim/tools/mNPUsim
 [DEBUG] yaml_config_path: /home/choi/EONSim/configs/cache_LRU.yaml
 [DEBUG] mnpusim_config_path: /home/choi/EONSim/configs/mNPUsim_related
 [DEBUG] yaml_config_path: /home/choi/EONSim/configs/cache_LRU.yaml
@@ -18,11 +19,11 @@
 ║ Lookups per sample: 170                                                                            ║
 ║ Embedding Dimension 256                                                                            ║
 ╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
-(Time elapsed(s) in model and data gen:   0.597859sec)
+(Time elapsed(s) in model and data gen:   0.604498sec)
 [DEBUG] lS_i shape: (2, 512, 5440)
 [DEBUG] addr_trace shape: (2, 512, 10880)
 Starting multiprocessing with 127 cores...
-(Time elapsed(s) in address generation:  24.511695sec)
+(Time elapsed(s) in address generation:  24.739432sec)
 [DEBUG] self.offmem_trace shape: (2, 512, 10880)
 
 ╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
@@ -37,7 +38,7 @@ Starting multiprocessing with 127 cores...
 ║ Cache tag bits: 25 bits                                                                            ║
 ╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
 on mem data structure size: 549.30 KB
-(Time elapsed(s) in create memory structure:   0.687177sec)
+(Time elapsed(s) in create memory structure:   0.160870sec)
 
 ╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
 ║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 Simulation Start 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
@@ -58,42 +59,7 @@ Simulation Done
 ║ [Batch 0] hit ratio: 0.4775   accesses: 5570560   hits: 2659710   misses: 2910850                  ║
 ║ [Batch 1] hit ratio: 0.4908   accesses: 5570560   hits: 2733764   misses: 2836796                  ║
 ╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
-(Time elapsed(s) in do simulation:  38.872419sec)
-
-
-
- START OFF-CHIP MEMORY SIMULATION 
-
-[DEBUG] Starting off-chip memory simulation...
-[DEBUG] Created intermediate directory: /home/choi/EONSim/intermediate_180006
-[DEBUG] Created eonsim_results directory name: eonsim_results_74181
-[DEBUG] Removed existing dram_config directory
-[DEBUG] Removed existing npumem_config directory
-[DEBUG] Copied dram_config from /home/choi/EONSim/configs/mNPUsim_related/dram_config to /home/choi/simulators/mNPUsim/eonsim_config/dram_config
-[DEBUG] Copied npumem_config from /home/choi/EONSim/configs/mNPUsim_related/npumem_config to /home/choi/simulators/mNPUsim/eonsim_config/npumem_config
-[DEBUG] Generated trace file: /home/choi/EONSim/intermediate_180006/offmem_trace_flat.txt
-[DEBUG] Total elements in offmem_trace: 5570560
-[DEBUG] -1 count in offmem_trace: 2733764
-[DEBUG] -1 ratio in offmem_trace: 0.4908
-[DEBUG] DRAM config path: eonsim_config/dram_config/total_dram_config/single_hbm3_819gbs.cfg
-[DEBUG] NPU memory config path: eonsim_config/npumem_config/npumem_architecture_list/single.txt
-[DEBUG] DRAM config file verified: /home/choi/simulators/mNPUsim/eonsim_config/dram_config/total_dram_config/single_hbm3_819gbs.cfg
-[DEBUG] NPU memory config file verified: /home/choi/simulators/mNPUsim/eonsim_config/npumem_config/npumem_architecture_list/single.txt
-[DEBUG] Executing mnpusim...
-[DEBUG] LD_LIBRARY_PATH: /home/choi/simulators/mNPUsim/DRAMsim3
-[DEBUG] mnpusim execution completed. Output saved to /home/choi/EONSim/intermediate_180006/output.txt
-[DEBUG] Copied result directory to /home/choi/EONSim/intermediate_180006/result
-[RESULT] mNPUsim cycles: 9287809
-
-╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
-║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 Off-chip Memory Simulation Results 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
-╠════════════════════════════════════════════════════════════════════════════════════════════════════╣
-║ Off-chip Memory Cycles: 12021573                                                                   ║
-║ Results Directory: /home/choi/EONSim/intermediate_180006                                           ║
-╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
-[DEBUG] Cleaned up intermediate directory: /home/choi/EONSim/intermediate_180006
-[DEBUG] Cleaned up eonsim_results directory: /home/choi/simulators/mNPUsim/eonsim_results_74181
-(Time elapsed(s) in off-chip memory simulation:  64.668723sec)
+(Time elapsed(s) in do simulation:  24.175719sec)
 [DEBUG] workload_type: dlrm
 
 
@@ -133,4 +99,4 @@ Setting energy table configuration...
 ║     Operations Energy:                                                                             ║
 ║       - Operation 0: 21265121.280 pJ                                                               ║
 ╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
-(Time elapsed(s) in energy estimation:   0.003640sec)
+(Time elapsed(s) in energy estimation:   0.003575sec)

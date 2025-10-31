@@ -1,0 +1,5 @@
+cycle, address (hex), channel-idx, npu-idx, module-idx
+437, 0, 0, 0, 0
+439, 40, 0, 0, 0
+613, 80, 0, 0, 0
+613, c0, 0, 0, 0

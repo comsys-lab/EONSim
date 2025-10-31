@@ -1,0 +1,174 @@
+[DEBUG] script_dir: /home/choi/EONSim/src
+[DEBUG] mnpusim_path: /home/choi/EONSim/tools/mNPUsim
+[DEBUG] yaml_config_path: /home/choi/EONSim/configs/cache_LRU.yaml
+[DEBUG] mnpusim_config_path: /home/choi/EONSim/configs/mNPUsim_related
+[DEBUG] yaml_config_path: /home/choi/EONSim/configs/cache_LRU.yaml
+[DEBUG] Vector Unit - Lanes: 128, Sublanes: 8, ALUs per sublanes: 4
+[DEBUG] Matrix Unit - MXU dimension: 128, Number of MXUs: 4
+[DEBUG] Memory - Type: cache, Size: 32768 KB, Policy: cache_LRU
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 General Simulation Configuration 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╠════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║ Dataset: /home/choi/EONSim/datasets/dlrm/reuse_medium_test.txt                                     ║
+║ Numeric format: 32 bits                                                                            ║
+║ Num batches: 10                                                                                    ║
+║ Num tables: 60                                                                                     ║
+║ Batch Size (samples per batch): 256                                                                ║
+║ Vectors per table: 1000000                                                                         ║
+║ Lookups per sample: 120                                                                            ║
+║ Embedding Dimension 128                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+(Time elapsed(s) in model and data gen:   1.824319sec)
+[DEBUG] lS_i shape: (10, 60, 30720)
+[DEBUG] addr_trace shape: (10, 60, 122880)
+Starting multiprocessing with 127 cores...
+(Time elapsed(s) in address generation:  34.285678sec)
+[DEBUG] self.offmem_trace shape: (10, 60, 122880)
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 On-Chip Memory Configuration 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╠════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║ Memory size: 33554432 B (32 MB)                                                                    ║
+║ Memory type: cache                                                                                 ║
+║ Memory policy: cache_LRU                                                                           ║
+║ Cache way: 16-way                                                                                  ║
+║ Cache line size: 128 B                                                                             ║
+║ Cache set: 16384 sets                                                                              ║
+║ Cache tag bits: 27 bits                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+on mem data structure size: 133.43 KB
+(Time elapsed(s) in create memory structure:   0.215605sec)
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 Simulation Start 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+Processing batch 0...
+Processing batch 1...
+Processing batch 2...
+Processing batch 3...
+Processing batch 4...
+Processing batch 5...
+Processing batch 6...
+Processing batch 7...
+Processing batch 8...
+Processing batch 9...
+Simulation Done
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 Simulation Results 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╠════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║ Total hit ratio: 0.6359                                                                            ║
+║ Total accesses: 73728000                                                                           ║
+║ Total hits: 46880740                                                                               ║
+║ Total misses: 26847260                                                                             ║
+║ ----------------------------------------                                                           ║
+║ Per batch results                                                                                  ║
+║ [Batch 0] hit ratio: 0.6355   accesses: 7372800   hits: 4685560   misses: 2687240                  ║
+║ [Batch 1] hit ratio: 0.6351   accesses: 7372800   hits: 4682744   misses: 2690056                  ║
+║ [Batch 2] hit ratio: 0.6392   accesses: 7372800   hits: 4712416   misses: 2660384                  ║
+║ [Batch 3] hit ratio: 0.6362   accesses: 7372800   hits: 4690564   misses: 2682236                  ║
+║ [Batch 4] hit ratio: 0.6335   accesses: 7372800   hits: 4670956   misses: 2701844                  ║
+║ [Batch 5] hit ratio: 0.6371   accesses: 7372800   hits: 4697456   misses: 2675344                  ║
+║ [Batch 6] hit ratio: 0.6356   accesses: 7372800   hits: 4685820   misses: 2686980                  ║
+║ [Batch 7] hit ratio: 0.6357   accesses: 7372800   hits: 4686836   misses: 2685964                  ║
+║ [Batch 8] hit ratio: 0.6353   accesses: 7372800   hits: 4683844   misses: 2688956                  ║
+║ [Batch 9] hit ratio: 0.6354   accesses: 7372800   hits: 4684544   misses: 2688256                  ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+(Time elapsed(s) in do simulation: 119.014635sec)
+[DEBUG] workload_type: dlrm
+
+
+
+ START ENERGY ESTIMATION 
+
+Setting parameters for energy estimation...
+Setting workload configuration...
+Setting energy table configuration...
+ [DEBUG] action type and count for op 0: add 938179840.0
+ [DEBUG] action type and count for op 0: add 938179840.0
+ [DEBUG] action type and count for op 0: add 938179840.0
+ [DEBUG] action type and count for op 0: add 938179840.0
+ [DEBUG] action type and count for op 0: add 938179840.0
+ [DEBUG] action type and count for op 0: add 938179840.0
+ [DEBUG] action type and count for op 0: add 938179840.0
+ [DEBUG] action type and count for op 0: add 938179840.0
+ [DEBUG] action type and count for op 0: add 938179840.0
+ [DEBUG] action type and count for op 0: add 938179840.0
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 Energy Estimation Results 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 Energy Estimation Results 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╠════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║ Total Energy: 174598271756.800 pJ                                                                  ║
+║ Off-chip Memory Energy: 150344656000.000 pJ (86.11%)                                               ║
+║ On-chip Memory Energy: 22142711116.800 pJ (12.68%)                                                 ║
+║ Operations Energy:                                                                                 ║
+║   - Operation 0: 2110904640.000 pJ (1.21%)                                                         ║
+║                                                                                                    ║
+║ Per-Batch Energy:                                                                                  ║
+║   - Batch 0:                                                                                       ║
+║     Total Energy: 17472718163.200 pJ                                                               ║
+║     Off-chip Memory Energy: 15048544000.000 pJ                                                     ║
+║     On-chip Memory Energy: 2213083699.200 pJ                                                       ║
+║     Operations Energy:                                                                             ║
+║       - Operation 0: 211090464.000 pJ                                                              ║
+║   - Batch 1:                                                                                       ║
+║     Total Energy: 17487157710.080 pJ                                                               ║
+║     Off-chip Memory Energy: 15064313600.000 pJ                                                     ║
+║     On-chip Memory Energy: 2211753646.080 pJ                                                       ║
+║     Operations Energy:                                                                             ║
+║       - Operation 0: 211090464.000 pJ                                                              ║
+║   - Batch 2:                                                                                       ║
+║     Total Energy: 17335009189.120 pJ                                                               ║
+║     Off-chip Memory Energy: 14898150400.000 pJ                                                     ║
+║     On-chip Memory Energy: 2225768325.120 pJ                                                       ║
+║     Operations Energy:                                                                             ║
+║       - Operation 0: 211090464.000 pJ                                                              ║
+║   - Batch 3:                                                                                       ║
+║     Total Energy: 17447059252.480 pJ                                                               ║
+║     Off-chip Memory Energy: 15020521600.000 pJ                                                     ║
+║     On-chip Memory Energy: 2215447188.480 pJ                                                       ║
+║     Operations Energy:                                                                             ║
+║       - Operation 0: 211090464.000 pJ                                                              ║
+║   - Batch 4:                                                                                       ║
+║     Total Energy: 17547602801.920 pJ                                                               ║
+║     Off-chip Memory Energy: 15130326400.000 pJ                                                     ║
+║     On-chip Memory Energy: 2206185937.920 pJ                                                       ║
+║     Operations Energy:                                                                             ║
+║       - Operation 0: 211090464.000 pJ                                                              ║
+║   - Batch 5:                                                                                       ║
+║     Total Energy: 17411719281.920 pJ                                                               ║
+║     Off-chip Memory Energy: 14981926400.000 pJ                                                     ║
+║     On-chip Memory Energy: 2218702417.920 pJ                                                       ║
+║     Operations Energy:                                                                             ║
+║       - Operation 0: 211090464.000 pJ                                                              ║
+║   - Batch 6:                                                                                       ║
+║     Total Energy: 17471384966.400 pJ                                                               ║
+║     Off-chip Memory Energy: 15047088000.000 pJ                                                     ║
+║     On-chip Memory Energy: 2213206502.400 pJ                                                       ║
+║     Operations Energy:                                                                             ║
+║       - Operation 0: 211090464.000 pJ                                                              ║
+║   - Batch 7:                                                                                       ║
+║     Total Energy: 17466175243.520 pJ                                                               ║
+║     Off-chip Memory Energy: 15041398400.000 pJ                                                     ║
+║     On-chip Memory Energy: 2213686379.520 pJ                                                       ║
+║     Operations Energy:                                                                             ║
+║       - Operation 0: 211090464.000 pJ                                                              ║
+║   - Batch 8:                                                                                       ║
+║     Total Energy: 17481517262.080 pJ                                                               ║
+║     Off-chip Memory Energy: 15058153600.000 pJ                                                     ║
+║     On-chip Memory Energy: 2212273198.080 pJ                                                       ║
+║     Operations Energy:                                                                             ║
+║       - Operation 0: 211090464.000 pJ                                                              ║
+║   - Batch 9:                                                                                       ║
+║     Total Energy: 17477927886.080 pJ                                                               ║
+║     Off-chip Memory Energy: 15054233600.000 pJ                                                     ║
+║     On-chip Memory Energy: 2212603822.080 pJ                                                       ║
+║     Operations Energy:                                                                             ║
+║       - Operation 0: 211090464.000 pJ                                                              ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+(Time elapsed(s) in energy estimation:   0.003799sec)

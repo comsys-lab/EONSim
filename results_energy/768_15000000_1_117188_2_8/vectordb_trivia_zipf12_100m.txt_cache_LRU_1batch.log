@@ -1,0 +1,62 @@
+[DEBUG] script_dir: /home/choi/EONSim/src
+[DEBUG] mnpusim_path: /home/choi/EONSim/tools/mNPUsim
+[DEBUG] yaml_config_path: /home/choi/EONSim/configs/cache_LRU.yaml
+[DEBUG] mnpusim_config_path: /home/choi/EONSim/configs/mNPUsim_related
+[DEBUG] yaml_config_path: /home/choi/EONSim/configs/cache_LRU.yaml
+[DEBUG] Vector Unit - Lanes: 128, Sublanes: 8, ALUs per sublanes: 4
+[DEBUG] Matrix Unit - MXU dimension: 128, Number of MXUs: 4
+[DEBUG] Memory - Type: cache, Size: 262144 KB, Policy: cache_LRU
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 General Simulation Configuration 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╠════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║ Dataset: /home/choi/EONSim/datasets/vectordb/trivia_zipf12_100m.txt                                ║
+║ Numeric format: 32 bits                                                                            ║
+║ Num batches: 2                                                                                     ║
+║ Num tables: 1                                                                                      ║
+║ Batch Size (samples per batch): 8                                                                  ║
+║ Vectors per table: 15000000                                                                        ║
+║ Lookups per sample: 117188                                                                         ║
+║ Embedding Dimension 768                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+(Time elapsed(s) in model and data gen:  20.812152sec)
+[DEBUG] lS_i shape: (2, 1, 937504)
+[DEBUG] addr_trace shape: (2, 1, 22500096)
+Starting multiprocessing with 127 cores...
+(Time elapsed(s) in address generation: 100.380724sec)
+[DEBUG] self.offmem_trace shape: (2, 1, 22500096)
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 On-Chip Memory Configuration 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╠════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║ Memory size: 268435456 B (256 MB)                                                                  ║
+║ Memory type: cache                                                                                 ║
+║ Memory policy: cache_LRU                                                                           ║
+║ Cache way: 16-way                                                                                  ║
+║ Cache line size: 128 B                                                                             ║
+║ Cache set: 131072 sets                                                                             ║
+║ Cache tag bits: 24 bits                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+on mem data structure size: 1113.84 KB
+(Time elapsed(s) in create memory structure:   3.593444sec)
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 Simulation Start 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+Processing batch 0...
+Processing batch 1...
+Simulation Done
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒《 Simulation Results 》▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒║
+╠════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║ Total hit ratio: 0.0171                                                                            ║
+║ Total accesses: 45000192                                                                           ║
+║ Total hits: 768600                                                                                 ║
+║ Total misses: 44231592                                                                             ║
+║ ----------------------------------------                                                           ║
+║ Per batch results                                                                                  ║
+║ [Batch 0] hit ratio: 0.0152   accesses: 22500096   hits: 342312   misses: 22157784                 ║
+║ [Batch 1] hit ratio: 0.0189   accesses: 22500096   hits: 426288   misses: 22073808                 ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════╝
+(Time elapsed(s) in do simulation:  82.204459sec)
