@@ -1,7 +1,28 @@
 workload_type: dlrm
-embedding_dim: 96
-vectors_per_table: 250000000
-num_tables: 1
-pooling_factor: 2500000
-EMBS="$EMB_DIM,$EMB_ROW,$EMB_TBL,$EMB_POOL"
-NUM_FORMAT=8
+num_format: 32  # FP32 assumed
+
+# Embedding Layer Configuration
+embedding_layer:
+  embedding_dim: 128
+  vectors_per_table: 500000
+  num_tables: 60
+  pooling_factor: 120
+
+# Bottom MLP (256 -> 128 -> 128)
+# Format: {m: Batch Size, n: Output Features, k: Input Features}
+bot_mlp:
+  - m: 1
+    n: 128
+    k: 256
+  - m: 1
+    n: 128
+    k: 128
+
+# Top MLP (128 -> 64 -> 1)
+top_mlp:
+  - m: 1
+    n: 64
+    k: 128
+  - m: 1
+    n: 1
+    k: 64
