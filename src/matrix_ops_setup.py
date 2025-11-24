@@ -4,10 +4,12 @@ import os
 from scale_up_sim import scale_up_runtime, scale_up_buf_access, scale_up_off_access
 
 class accelerator:
-    def __init__(self, topology_path, configuration_path, mnk_flag):
+    def __init__(self, topology_path, configuration_path, mnk_flag, output_dir=None, output_filename=None):
         self.topology_path = ""
         self.configuration_path = ""
         self.mnk_flag = "mnk"
+        self.output_dir = output_dir
+        self.output_filename = output_filename
         self.layer_result_table = {}  # Cache for previously simulated layers
         self.pod_result_table = {}    # Cache for previously simulated pod MNKs
         
@@ -395,22 +397,28 @@ class accelerator:
         # Get the topology name from the path (without extension)
         topology_name = os.path.splitext(os.path.basename(self.topology_path))[0]
         
-        # Set output directory to 'results/topology_name' in the parent directory of the config file
-        output_dir = os.path.join(
-            os.path.dirname(os.path.dirname(self.configuration_path)), 
-            'results', 
-            topology_name
-        )
+        if self.output_dir:
+            output_dir = self.output_dir
+        else:
+            # Set output directory to 'results/topology_name' in the parent directory of the config file
+            output_dir = os.path.join(
+                os.path.dirname(os.path.dirname(self.configuration_path)), 
+                'results', 
+                topology_name
+            )
         
         # Create the directory if it doesn't exist
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
             
         # output file = this_path/results/topology_name/this_configuration_name_results.csv
-        output_file = os.path.join(
-            output_dir, 
-            self.configuration_path.split('/')[-1].replace('.cfg', '_results.csv')
-        )
+        if self.output_filename:
+            output_file = os.path.join(output_dir, self.output_filename + ".csv")
+        else:
+            output_file = os.path.join(
+                output_dir, 
+                self.configuration_path.split('/')[-1].replace('.cfg', '_results.csv')
+            )
         
         with open(output_file, 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
