@@ -8,7 +8,7 @@ from LRUlist import LRUlist
 from tqdm import tqdm
 from Helper import print_styled_header, print_styled_box
 from itertools import chain
-from srrip_cache import SRRIPCache
+# from srrip_cache import SRRIPCache
 from srrip_list import SRRIPList  # Add Python-based SRRIP implementation
 
 class MemProfile:

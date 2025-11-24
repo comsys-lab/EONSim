@@ -148,6 +148,11 @@ if __name__ == "__main__":
                 rrpv_bits = memory_config.get('RRPV_bits', 0)
                 rrip_insert = memory_config.get('RRPV_insertion', 0)
                 
+            # temp
+            if mem_policy == 'profile_dynamic_SRRIP':
+                rrpv_bits = 4
+                rrip_insert = 14
+                
     # Fallback to old .config format (commented out but kept for reference)
     # elif os.path.exists(config_path):
     #     with open(config_path, 'r') as mem_cfg:
@@ -326,27 +331,27 @@ if __name__ == "__main__":
     ### Run Energy estimation ###
     #################################
     
-    # helper.set_timer()
+    helper.set_timer()
     
-    # # set the parameters for energy estimation
-    # workload_type = fname.split('/')[-2]
+    # set the parameters for energy estimation
+    workload_type = fname.split('/')[-2]
     
-    # print("[DEBUG] workload_type: {}".format(workload_type))
+    print("[DEBUG] workload_type: {}".format(workload_type))
 
-    # workload_config_path = os.path.join(os.path.dirname(script_dir), 'configs', 'workload_config.yaml')
-    # energy_table_path = os.path.join(os.path.dirname(script_dir), 'configs', 'energy_estimation_table.yaml')
-    # # access_per_batch = num_tables * num_indices_per_lookup * bsz
-    # access_per_batch = num_tables * len(reqgen.addr_trace[0][0])
-    # tech_node = 45
-    # if n_format_byte == 4: # currently only support fp32 and int8
-    #     energy_n_format = "fp32"
-    # elif n_format_byte == 1:
-    #     energy_n_format = "int8"
+    workload_config_path = os.path.join(os.path.dirname(script_dir), 'configs', 'workload_config.yaml')
+    energy_table_path = os.path.join(os.path.dirname(script_dir), 'configs', 'energy_estimation_table.yaml')
+    # access_per_batch = num_tables * num_indices_per_lookup * bsz
+    access_per_batch = num_tables * len(reqgen.addr_trace[0][0])
+    tech_node = 45
+    if n_format_byte == 4: # currently only support fp32 and int8
+        energy_n_format = "fp32"
+    elif n_format_byte == 1:
+        energy_n_format = "int8"
     
-    # energy_est = EnergyEstimator(workload_type, workload_config_path, tech_node, energy_table_path, energy_n_format, mem_struct.access_results, access_per_batch, mem_gran)
-    # # energy_est.print_all_config()
-    # energy_est.do_energy_estimation()
+    energy_est = EnergyEstimator(workload_type, workload_config_path, tech_node, energy_table_path, energy_n_format, mem_struct.access_results, access_per_batch, mem_gran)
+    # energy_est.print_all_config()
+    energy_est.do_energy_estimation()
     
-    # helper.end_timer("energy estimation")
+    helper.end_timer("energy estimation")
     
     #-------------------------------------------------------------------

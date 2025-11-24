@@ -5,6 +5,7 @@ import itertools
 import random
 from collections import OrderedDict, Counter
 from LRUlist import LRUlist
+from srrip_list import SRRIPList
 from tqdm import tqdm
 from Helper import print_styled_header, print_styled_box
 
@@ -47,7 +48,8 @@ class MemCache:
         self.cache_way = cache_config[0] # cache_config = [way, line size]
         self.cache_line_size = cache_config[1]
         self.cache_set = int(self.mem_size / self.cache_line_size / self.cache_way)
-        self.cache_index_bits = int(np.log2(self.cache_set-1)+1)
+        # Fix: Use ceiling of log2 to handle non-power-of-2 cache sets
+        self.cache_index_bits = int(np.ceil(np.log2(self.cache_set))) if self.cache_set > 1 else 0
         self.cache_offset_bits = int(np.log2(self.cache_line_size-1)+1) # byte offset
         self.cache_tag_bits = 48 - self.cache_index_bits - self.cache_offset_bits # 48 bits - index bits - byte offset
         self.rrpv_bits = cache_config[2]
@@ -85,11 +87,16 @@ class MemCache:
         return addr & ~tag_mask_bits
     
     def get_index_bits(self, addr):
+        if self.cache_index_bits == 0:
+            return 0
+        
         index_msb = self.cache_index_bits + self.cache_offset_bits - 1
         index_lsb = self.cache_offset_bits
         mask = ((1 << (index_msb - index_lsb + 1)) - 1) << index_lsb
         index_bits = (addr & mask) >> index_lsb    # extract only index bits
-        return index_bits
+        
+        # Ensure index is within bounds for non-power-of-2 cache sets, this is just for 384 MB cache simulation.
+        return index_bits % self.cache_set
     
     def OPT_replacement(self, curr_cycle, this_index):
         indices_t = np.array([], dtype=np.int64)
@@ -114,8 +121,8 @@ class MemCache:
         elif self.mem_policy == "cache_OPT":
             self.on_mem = [np.array([], dtype=np.int64) for i in range(self.cache_set)]
         elif self.mem_policy == "cache_SRRIP":
-            # Initialize as 2D arrays with [tag, RRPV] pairs
-            self.on_mem = [np.zeros((0, 2), dtype=np.int64) for i in range(self.cache_set)]
+            # Initialize SRRIP cache with one instance per set
+            self.on_mem = [SRRIPList(self.cache_way, self.rrpv_bits, self.rrpv_insert) for i in range(self.cache_set)]
             
         if self.mem_policy == "cache_profile":
             # flatten the dataset -> count and sort the access frequency of each memory address
@@ -191,39 +198,13 @@ class MemCache:
                         this_tag = self.get_tag_bits(self.emb_dataset[nb][nt][vec])
                         this_index = self.get_index_bits(self.emb_dataset[nb][nt][vec])
                         
-                        # Check if tag exists in cache
-                        tag_match = np.where(self.on_mem[this_index][:,0] == this_tag)[0]
-                        
-                        if len(tag_match) > 0: # Cache hit
+                        # Use SRRIPList module's access method
+                        if self.on_mem[this_index].access(this_tag):
                             num_hit += 1
                             hit_mask[vec] = True
-                            # Update RRPV to 0 on hit
-                            self.on_mem[this_index][tag_match[0], 1] = 0
-                        else: # Cache miss
+                        else:
                             num_miss += 1
                             # hit_mask[vec] remains False
-                            if len(self.on_mem[this_index]) < self.cache_way:
-                                # Add new entry with RRPV_insert
-                                new_entry = np.array([[this_tag, self.rrpv_insert]])
-                                self.on_mem[this_index] = np.vstack([self.on_mem[this_index], new_entry])
-                            else:
-                                max_rrpv = 2**self.rrpv_bits - 1
-                                replaced = False
-                                
-                                while not replaced:
-                                    # Find entries with max RRPV
-                                    victim_candidates = np.where(self.on_mem[this_index][:,1] == max_rrpv)[0]
-                                    
-                                    if len(victim_candidates) > 0:
-                                        # Replace first victim found
-                                        self.on_mem[this_index][victim_candidates[0]] = [this_tag, self.rrpv_insert]
-                                        replaced = True
-                                    else:
-                                        # Increment all RRPV values
-                                        self.on_mem[this_index][:,1] = np.minimum(
-                                            self.on_mem[this_index][:,1] + 1, 
-                                            max_rrpv
-                                        )
                         
                         pbar.update(1)
                     
@@ -232,7 +213,7 @@ class MemCache:
                     self.offmem_trace[nb][nt][miss_mask] = self.emb_dataset[nb][nt][miss_mask]
             
             self.access_results.append([num_hit, num_miss])
-    
+
     def do_simulation_OPT(self):
         for nb in range(len(self.emb_dataset)): # recall that self.emb_dataset[numbatch][table][batchsz*lookuppersample]
             num_hit = 0

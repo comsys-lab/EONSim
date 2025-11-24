@@ -18,6 +18,7 @@ offmem_trace_flat.txt
 intermediate
 off_chip_memory_cycles_spad_off_1_batchsize.csv
 off_chip_memory_cycles_spad_off_1_tables.csv
+results_energy_207and215/
 results_onmem/
 results_val/
 results_val_forv6e/
@@ -28,5 +29,12 @@ results_val_forv6e_tables_b256/
 datasets/vectordb/deep250m_100m.txt
 datasets/vectordb/deep250m_small_100m.txt
 datasets/vectordb/trivia_zipf12_100m.txt
+datasets/vectordb/trivia_zipf15_100m.txt
+datasets/vectordb/wikiall_zipf12_100m.txt
+datasets/vectordb/wikiall_zipf15_100m.txt
+datasets/vectordb/msmarco_100m.txt
+datasets/vectordb/clueweb22_100m.txt
+datasets/vectordb/wikiall_seq_100m.txt
+datasets/vectordb/trivia_seq_100m.txt
 
 ### temp
