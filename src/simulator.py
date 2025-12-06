@@ -6,6 +6,8 @@ from MemProfile import MemProfile
 from EnergyEstimator import EnergyEstimator
 from RuntimeModel import RuntimeModel
 from MemoryModel import MemoryModel
+from ConfigLoader import ConfigLoader
+from matrix_simulation import run_matrix_simulation
 import argparse
 import sys
 import numpy as np
@@ -13,19 +15,6 @@ import os
 import yaml
 import subprocess
 import shutil
-
-## Credit: Original code from Rishabh; Assisting the args parser
-def dash_separated_ints(value):
-    vals = value.split("-")
-    for val in vals:
-        try:
-            int(val)
-        except ValueError:
-            raise argparse.ArgumentTypeError(
-                "%s is not a valid dash separated list of ints" % value
-            )
-
-    return value
 
 ## Credit: Original code from Rishabh
 def print_general_config(nbatches, n_format_byte, bsz, table_config, emb_dim, lookups_per_sample, fname):
@@ -56,38 +45,78 @@ if __name__ == "__main__":
     # memory config
     parser.add_argument("--memory-config", type=str, default="spad_naive")
     
-    # emb related parameters
-    parser.add_argument("--arch-sparse-feature-size", type=int, default=128)
-    parser.add_argument("--arch-embedding-size", type=dash_separated_ints, default="500000-500000-500000-500000-500000-500000-500000-500000-500000-500000-500000-500000")
+    # workload config (New)
+    parser.add_argument("--workload-config", type=str, required=True, help="Path to workload config (without extension)")
 
     # execution and dataset related parameters
     parser.add_argument("--data-generation", type=str, default="./datasets/reuse_high/table_1M.txt")
-    parser.add_argument("--numeric-format-bits", type=int, default=8)
     parser.add_argument("--num-batches", type=int, default=1)
     parser.add_argument("--output-name", type=int, default=0)
     parser.add_argument("--batch-size", type=int, default=1024)
-    parser.add_argument("--lookups-per-sample", type=int, default=150)
     parser.add_argument("--profiling-multiplier", type=int, default=1)
-    parser.add_argument("--workload-type", type=str, default="dlrm")
+    parser.add_argument("--output-filename", type=str, default=None, help="Filename for simulation results (without extension)")
     
+    # Matrix config (New)
+    parser.add_argument("--matrix-config", type=str, default="tpuv6e.cfg", help="Matrix configuration file name")
+
     # mNPUsim related parameters
     parser.add_argument("--offchip-memory-config", type=str, default="dram_config/total_dram_config/single_hbm3_819gbs.cfg")
     parser.add_argument("--npumem-config", type=str, default="npumem_config/npumem_architecture_list/single.txt")
     
     # argparses
     args = parser.parse_args()
+
+    # Load workload config
+    print(f"[DEBUG] Loading workload config from base path: {args.workload_config}")
+    cfg_loader = ConfigLoader(args.workload_config)
+    
+    # Extract parameters from ConfigLoader
+    emb_conf = cfg_loader.get_embedding_config()
+    gen_conf = cfg_loader.get_general_config()
+    matrix_ops_csv_path = cfg_loader.get_matrix_ops_config_path()
+    
+    # Set simulation parameters directly from config
+    emb_dim = emb_conf['embedding_dim']
+    embsize = emb_conf['emb_size_str']
+    num_indices_per_lookup = emb_conf['pooling_factor']
+    
+    # Extract additional params for directory naming
+    vectors_per_table = emb_conf['vectors_per_table']
+    num_tables = emb_conf['num_tables']
+    pooling_factor = emb_conf['pooling_factor']
+    
+    # Set numeric format from config
+    args.numeric_format_bits = gen_conf['num_format']
+    
+    workload_type = gen_conf['workload_type']
+    
+    print(f"[DEBUG] Matrix Ops CSV Config Path: {matrix_ops_csv_path}")
+    print(f"[DEBUG] Generated Embedding Size String: {embsize[:50]}...")
+
     mem_config_file = args.memory_config
     n_format_bits = args.numeric_format_bits
     n_format_byte = int(np.ceil(n_format_bits / 8))
     nbatches = args.num_batches
-    embsize = args.arch_embedding_size
-    emb_dim = args.arch_sparse_feature_size #embedding dim
+    # embsize and emb_dim are already set above
     bsz = args.batch_size # batch size
     fname = args.data_generation
-    num_indices_per_lookup = args.lookups_per_sample # pooling factor or lookups per sample
+    # num_indices_per_lookup is already set above
+    
+    # Generate output directory path based on workload parameters
+    # Rule: "vector_dimension"_"rows_per_table"_"num_tables"_"pooling_factor"_"batch_size"
+    output_dir_name = f"{emb_dim}_{vectors_per_table}_{num_tables}_{pooling_factor}_{bsz}"
+    output_dir = os.path.join("results", output_dir_name)
+    
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        print(f"[DEBUG] Created output directory: {output_dir}")
+
+    # Write output_dir to a temp file for the shell script to move the log file
+    with open(".last_output_dir", "w") as f:
+        f.write(output_dir)
     
     prof_multiplier = args.profiling_multiplier
-    workload_type = args.workload_type
+    # workload_type is already set above
     
     # Script dir setup
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -103,8 +132,13 @@ if __name__ == "__main__":
     # Set up config paths
     config_path = os.path.join(os.path.dirname(script_dir), 'configs', f'{mem_config_file}.yaml')
     mnpusim_config_path = os.path.join(os.path.dirname(script_dir), 'configs', 'mNPUsim_related')
+    
+    # Matrix config path construction
+    matrix_config_path = os.path.join(os.path.dirname(script_dir), 'configs', 'scalesim_config', args.matrix_config)
+    
     print(f"[DEBUG] yaml_config_path: {config_path}")
     print(f"[DEBUG] mnpusim_config_path: {mnpusim_config_path}")
+    print(f"[DEBUG] matrix_config_path: {matrix_config_path}")
     
     # Try YAML format first
     yaml_config_path = config_path
@@ -152,32 +186,6 @@ if __name__ == "__main__":
             if mem_policy == 'profile_dynamic_SRRIP':
                 rrpv_bits = 4
                 rrip_insert = 14
-                
-    # Fallback to old .config format (commented out but kept for reference)
-    # elif os.path.exists(config_path):
-    #     with open(config_path, 'r') as mem_cfg:
-    #         for cfg_line in mem_cfg:
-    #             key, value = cfg_line.split(':')
-    #             if key.strip() == 'mem_size':
-    #                 mem_size = int(value.strip()) # KB
-    #             elif key.strip() == 'mem_type':
-    #                 mem_type = str(value.strip())
-    #             elif key.strip() == 'policy':
-    #                 mem_policy = mem_type+'_'+str(value.strip())
-    #             elif key.strip() == 'access_granularity':
-    #                 mem_gran = int(value.strip()) # B
-    #             if mem_type == "cache":
-    #                 if key.strip() == 'cache_way':
-    #                     cache_way = int(value.strip())
-    #                 elif key.strip() == 'cache_line_size':
-    #                     # cache_line_size = int(value.strip())
-    #                     cache_line_size = mem_gran
-    #                 
-    #             if mem_policy == 'cache_SRRIP' or mem_policy == 'profile_dynamic_SRRIP':
-    #                 if key.strip() == 'RRPV_bits':
-    #                     rrpv_bits = int(value.strip())
-    #                 elif key.strip() == 'RRPV_insertion':
-    #                     rrip_insert = int(value.strip())
     else:
         raise FileNotFoundError(f"Config file not found: {yaml_config_path} or {config_path}")
         
@@ -309,10 +317,10 @@ if __name__ == "__main__":
     ### Off-chip Memory Simulation using mNPUsim ###
     ####################################################
     
-    # helper.set_timer()
-    # memory_model = MemoryModel(script_dir, mem_struct.offmem_trace, mnpusim_path, mnpusim_config_path, offchip_memory_config, npumem_config)
-    # memory_model.do_memory_simulation()
-    # helper.end_timer("off-chip memory simulation")
+    helper.set_timer()
+    memory_model = MemoryModel(script_dir, mem_struct.offmem_trace, mnpusim_path, mnpusim_config_path, offchip_memory_config, npumem_config)
+    memory_model.do_memory_simulation()
+    helper.end_timer("off-chip memory simulation")
     
     #-------------------------------------------------------------------
     
@@ -331,27 +339,48 @@ if __name__ == "__main__":
     ### Run Energy estimation ###
     #################################
     
-    helper.set_timer()
+    # helper.set_timer()
     
-    # set the parameters for energy estimation
-    workload_type = fname.split('/')[-2]
+    # # set the parameters for energy estimation
+    # workload_type = fname.split('/')[-2]
     
-    print("[DEBUG] workload_type: {}".format(workload_type))
+    # print("[DEBUG] workload_type: {}".format(workload_type))
 
-    workload_config_path = os.path.join(os.path.dirname(script_dir), 'configs', 'workload_config.yaml')
-    energy_table_path = os.path.join(os.path.dirname(script_dir), 'configs', 'energy_estimation_table.yaml')
-    # access_per_batch = num_tables * num_indices_per_lookup * bsz
-    access_per_batch = num_tables * len(reqgen.addr_trace[0][0])
-    tech_node = 45
-    if n_format_byte == 4: # currently only support fp32 and int8
-        energy_n_format = "fp32"
-    elif n_format_byte == 1:
-        energy_n_format = "int8"
+    # workload_config_path = os.path.join(os.path.dirname(script_dir), 'configs', 'workload_config.yaml')
+    # energy_table_path = os.path.join(os.path.dirname(script_dir), 'configs', 'energy_estimation_table.yaml')
+    # # access_per_batch = num_tables * num_indices_per_lookup * bsz
+    # access_per_batch = num_tables * len(reqgen.addr_trace[0][0])
+    # tech_node = 45
+    # if n_format_byte == 4: # currently only support fp32 and int8
+    #     energy_n_format = "fp32"
+    # elif n_format_byte == 1:
+    #     energy_n_format = "int8"
     
-    energy_est = EnergyEstimator(workload_type, workload_config_path, tech_node, energy_table_path, energy_n_format, mem_struct.access_results, access_per_batch, mem_gran)
-    # energy_est.print_all_config()
-    energy_est.do_energy_estimation()
+    # energy_est = EnergyEstimator(workload_type, workload_config_path, tech_node, energy_table_path, energy_n_format, mem_struct.access_results, access_per_batch, mem_gran)
+    # # energy_est.print_all_config()
+    # energy_est.do_energy_estimation()
     
-    helper.end_timer("energy estimation")
+    # helper.end_timer("energy estimation")
     
     #-------------------------------------------------------------------
+    
+    ############################################
+    ### Run Simulation for Matrix Operations ###
+    ############################################
+    
+    if matrix_ops_csv_path and os.path.exists(matrix_ops_csv_path):
+        helper.set_timer()
+        print("\n[Matrix Operations Simulation]")
+        
+        run_matrix_simulation(
+            matrix_ops_csv_path, 
+            matrix_config_path, 
+            mnk_flag="gemm", 
+            output_dir=output_dir, 
+            output_filename=args.output_filename
+        )
+        helper.end_timer("matrix operations simulation")
+    else:
+        print("[WARNING] Matrix operations CSV config not found or not provided. Skipping matrix simulation.")
+
+

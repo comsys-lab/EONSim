@@ -18,6 +18,7 @@ offmem_trace_flat.txt
 intermediate
 off_chip_memory_cycles_spad_off_1_batchsize.csv
 off_chip_memory_cycles_spad_off_1_tables.csv
+results
 results_energy_207and215/
 results_onmem/
 results_val/

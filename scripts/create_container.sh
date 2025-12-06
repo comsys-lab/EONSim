@@ -1,7 +1,7 @@
 #!/bin/bash
 
 NAME_CONTAINER="eonsim_container" # need to be changed
-NAME_IMAGE="embed_image:test" # need to be changed
+NAME_IMAGE="eonsim_image:test" # need to be changed
 
 if [ "$1" == "build" ]; then
     read -p "Do you want to rebuild the image '$NAME_IMAGE'? (y/n): " answer
@@ -44,8 +44,6 @@ else
         -e TERM=xterm-256color -e COLORTERM=truecolor -e FORCE_COLOR=true \
         --name $NAME_CONTAINER \
         --user $(id -u):$(id -g) \
-        --volume /home/choi/Energy-Efficient-Embedding-Vector-Operation:/workspace \
-        --volume /home/choi/chango:/chango \
-        --volume /home/choi/dlrm_criteo_tera:/dlrm \
+        --volume ../../EONSim:/workspace \
         -it $NAME_IMAGE
 fi

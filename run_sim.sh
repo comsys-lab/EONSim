@@ -8,7 +8,6 @@ mkdir -p $OUT
 ### workload & dataset ###
 workload_path_dir="$(pwd)/workload_configs/"
 workload="dlrm_rmc2_small"
-# WORKLOAD_CONFIG points to the base path (no extension)
 WORKLOAD_CONFIG="${workload_path_dir}${workload}"
 
 data_path_dir="$(pwd)/datasets/"
@@ -19,7 +18,7 @@ dataset_list=("dlrm/reuse_high_test.txt")
 MEM_CFG=$1
 MATRIX_CFG="tpuv6e.cfg"
 
-NUM_BATCH=2
+NUM_BATCH=1
 BS=32
 
 # Set PROF_MULTIPLIER to $2 if provided, otherwise default to 1
@@ -47,8 +46,7 @@ for dataset in "${dataset_list[@]}"; do
     
     echo "Running simulation for dataset: $dataset with config base: $WORKLOAD_CONFIG"
     
-    # simulator_workload.py
-    python3 src/simulator_workload.py \
+    python3 src/simulator.py \
         --workload-config $WORKLOAD_CONFIG \
         --num-batches $NUM_BATCH \
         --batch-size $BS \
