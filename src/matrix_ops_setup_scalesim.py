@@ -1,11 +1,10 @@
 import csv
 import numpy as np
 import os
-import matrix_single_core_sim
 from matrix_single_core_sim import scale_up_runtime, scale_up_buf_access, scale_up_off_access
 
 class accelerator:
-    def __init__(self, topology_path, configuration_path, mnk_flag, output_dir=None, output_filename=None, debug=False):
+    def __init__(self, topology_path, configuration_path, mnk_flag, output_dir=None, output_filename=None):
         self.topology_path = ""
         self.configuration_path = ""
         self.mnk_flag = "mnk"
@@ -14,10 +13,6 @@ class accelerator:
         self.layer_result_table = {}  # Cache for previously simulated layers
         self.pod_result_table = {}    # Cache for previously simulated pod MNKs
         
-        self.debug = debug
-        self.dprint = print if debug else lambda *a, **k: None
-        matrix_single_core_sim.DEBUG = debug
-
         self.setup_params(topology_path, configuration_path, mnk_flag)
     
     def setup_params(self, topology_path, configuration_path, mnk_flag):
@@ -75,7 +70,7 @@ class accelerator:
                         # Ensure we have at least 4 fields for gemm/mnk
                         this_line = (row + [""] * 4)[:4]
                     
-                    self.dprint(f"Processing line: {this_line}")
+                    print(f"Processing line: {this_line}")
                     # Extract M, N, K values (indices 1, 2, 3) and convert them to integers
                     this_line = [int(this_line[1]), int(this_line[2]), int(this_line[3])]
                     self.mnk_topo.append(this_line)
@@ -84,8 +79,8 @@ class accelerator:
             
         
         self.num_layers = len(self.mnk_topo)
-        self.dprint(f"Number of layers: {self.num_layers}")
-        self.dprint(f"MNK Topology: {self.mnk_topo}")
+        print(f"Number of layers: {self.num_layers}")
+        print(f"MNK Topology: {self.mnk_topo}")
     
     def setup_hw(self):
         """
@@ -127,7 +122,7 @@ class accelerator:
                                 self.hw_config['latency'] = int(value)
                             elif key == 'dataflow':
                                 self.hw_config['dataflow'] = value
-                            
+                        
                         elif current_section == 'NPU_systolic':
                             if key == 'row':
                                 self.hw_config['sa_row'] = int(value)
@@ -139,13 +134,11 @@ class accelerator:
                                 self.hw_config['weight_buf_size'] = int(value) * 1024 # Convert to unit of bytes
                             elif key == 'output_buffer':
                                 self.hw_config['output_buf_size'] = int(value) * 1024 # Convert to unit of bytes
-                            elif key == 'global_buffer':
-                                self.hw_config['global_buf_size'] = int(value) * 1024 # Convert to unit of bytes
             
             # Print the configuration values for testing
-            self.dprint("Hardware Configuration:")
+            print("Hardware Configuration:")
             for key, value in self.hw_config.items():
-                self.dprint(f"  {key}: {value}")
+                print(f"  {key}: {value}")
                 
             # Verify that all required keys are present
             required_keys = [
@@ -205,7 +198,7 @@ class accelerator:
             layer_key = tuple(map(int, this_layer))
             cached_result = self.skip_redundant_layer(this_layer)
             if cached_result:
-                self.dprint(f"  Layer {layer_idx + 1} is redundant. Using cached result: {cached_result}")
+                print(f"  Layer {layer_idx + 1} is redundant. Using cached result: {cached_result}")
                 self.total_results.append(np.array(cached_result))
                 continue
 
@@ -224,36 +217,31 @@ class accelerator:
                     
                     # Skip empty partitions
                     if this_part_mnk is None:
-                        self.dprint(f"  Skipping empty partition [{row_idx}, {col_idx}]")
+                        print(f"  Skipping empty partition [{row_idx}, {col_idx}]")
                         continue
 
                     cached_pod_result = self.skip_redundant_pod(this_part_mnk)
                     if cached_pod_result:
-                        self.dprint(f"  Partition [{row_idx}, {col_idx}] is redundant. Using cached result: {cached_pod_result}")
+                        print(f"  Partition [{row_idx}, {col_idx}] is redundant. Using cached result: {cached_pod_result}")
                         # For runtime (index 0), take the maximum value
                         results_this_layer[0] = max(results_this_layer[0], cached_pod_result[0])
                         # For other metrics, accumulate the values
                         results_this_layer[1:] += np.array(cached_pod_result[1:])
                         continue
                         
-                    self.dprint(f"  Simulating partition [{row_idx}, {col_idx}]: {this_part_mnk}")
+                    print(f"  Simulating partition [{row_idx}, {col_idx}]: {this_part_mnk}")
                     results_this_part = self.do_scale_up_simulation(this_part_mnk)
                     self.pod_result_table[tuple(map(int, this_part_mnk))] = results_this_part
 
                     # For runtime (index 0), take the maximum value
                     results_this_layer[0] = max(results_this_layer[0], results_this_part[0])
-                    
                     # For other metrics, accumulate the values
                     results_this_layer[1:] += np.array(results_this_part[1:])
-                    
-                    # Apply memory model to runtime
-                    results_this_layer[0] = self.this_layer_memory_model(results_this_layer)
-                    
-                    self.dprint(f"  Results for partition [{row_idx}, {col_idx}]: {results_this_part}")
+                    print(f"  Results for partition [{row_idx}, {col_idx}]: {results_this_part}")
             # Store the results for this layer
             self.total_results.append(results_this_layer)
             self.layer_result_table[layer_key] = results_this_layer.tolist()
-            self.dprint(f"Results for layer {layer_idx + 1}: {results_this_layer}")
+            print(f"Results for layer {layer_idx + 1}: {results_this_layer}")
         
         print("Simulation complete")
         
@@ -306,12 +294,12 @@ class accelerator:
                     this_part_mnk[0] = end_row - start_row
                     this_part_mnk[1] = end_col - start_col
                     if (this_part_mnk[0] <= 0) or (this_part_mnk[1] <= 0):
-                        self.dprint("Containing empty partition")
+                        print("Containing empty partition")
                         this_part_mnk = None
                         
                     # Assign the partitioned layer to the appropriate position in the array
                     partitioned_this_layer[r][c] = this_part_mnk
-                    self.dprint(f"Partitioned layer [{r}, {c}]: {this_part_mnk}")
+                    print(f"Partitioned layer [{r}, {c}]: {this_part_mnk}")
         
         elif self.hw_config['dataflow'] == 'WS':
             row = this_layer[2] # K
@@ -335,12 +323,12 @@ class accelerator:
                     this_part_mnk[2] = end_row - start_row
                     this_part_mnk[1] = end_col - start_col
                     if (this_part_mnk[2] <= 0) or (this_part_mnk[1] <= 0):
-                        self.dprint("Containing empty partition")
+                        print("Containing empty partition")
                         this_part_mnk = None
                 
                     # Assign the partitioned layer to the appropriate position in the array
                     partitioned_this_layer[r][c] = this_part_mnk
-                    self.dprint(f"Partitioned layer [{r}, {c}]: {this_part_mnk}")
+                    print(f"Partitioned layer [{r}, {c}]: {this_part_mnk}")
                     
         elif self.hw_config['dataflow'] == 'IS':
             row = this_layer[2] # K
@@ -364,12 +352,12 @@ class accelerator:
                     this_part_mnk[2] = end_row - start_row
                     this_part_mnk[0] = end_col - start_col
                     if (this_part_mnk[2] <= 0) or (this_part_mnk[0] <= 0):
-                        self.dprint("Containing empty partition")
+                        print("Containing empty partition")
                         this_part_mnk = None
                 
                     # Assign the partitioned layer to the appropriate position in the array
                     partitioned_this_layer[r][c] = this_part_mnk
-                    self.dprint(f"Partitioned layer [{r}, {c}]: {this_part_mnk}")
+                    print(f"Partitioned layer [{r}, {c}]: {this_part_mnk}")
         
         return partitioned_this_layer
     
@@ -402,65 +390,6 @@ class accelerator:
         
         return results_this_part
         
-    def this_layer_memory_model(self, results_this_layer):
-        runtime_this_layer = results_this_layer[0]
-        
-        # 1. Calculate data transfer sizes (assuming 1 byte per element)
-        input_off_access = results_this_layer[4]
-        weight_off_access = results_this_layer[5]
-        
-        # Assuming int8 (1 byte)
-        input_transfer_size = input_off_access * 1
-        weight_transfer_size = weight_off_access * 1
-        
-        # 2. Divide by pod dimensions to remove redundant fetches
-        # Input is shared across columns (broadcast to row), Weight is shared across rows (broadcast to col)
-        input_transfer_size = input_transfer_size / self.hw_config['pod_col']
-        weight_transfer_size = weight_transfer_size / self.hw_config['pod_row']
-        
-        # 3. Calculate number of transfers based on global buffer size
-        gbuf_size = self.hw_config['global_buf_size']
-        inactive_gbuf_size = gbuf_size / 2
-        total_transfer_data = input_transfer_size + weight_transfer_size
-        
-        if inactive_gbuf_size > 0:
-            num_transfer = np.ceil(total_transfer_data / inactive_gbuf_size)
-        else:
-            num_transfer = 1
-            
-        # 4. Calculate data transfer time
-        # data transfer time = Num_transfer * L + (input+weight)/BW
-        latency = self.hw_config['latency']
-        
-        # Calculate BW in Bytes/Cycle
-        # bw (GB/s) -> Bytes/s: bw * 1e9
-        # freq (MHz) -> Cycles/s: freq * 1e6
-        # Bytes/Cycle = (bw * 1e9) / (freq * 1e6)
-        bw_gbps = self.hw_config['bw']
-        freq_mhz = self.hw_config['freq']
-        
-        if freq_mhz > 0:
-            bw_bytes_per_cycle = (bw_gbps * 1e9) / (freq_mhz * 1e6)
-        else:
-            bw_bytes_per_cycle = 0
-        
-        # Data transfer part in cycles
-        if bw_bytes_per_cycle > 0:
-            data_time_cycles = total_transfer_data / bw_bytes_per_cycle
-        else:
-            data_time_cycles = 0
-            
-        transfer_cycles = (num_transfer * latency) + data_time_cycles
-        
-        # 5. Compare with compute time
-        if transfer_cycles > runtime_this_layer:
-            self.dprint(f"    Memory Bound: Transfer {int(transfer_cycles)} > Compute {int(runtime_this_layer)}")
-            runtime_this_layer = transfer_cycles
-        else:
-            self.dprint(f"    Compute Bound: Compute {int(runtime_this_layer)} >= Transfer {int(transfer_cycles)}")
-        
-        return runtime_this_layer
-
     def save_results(self):
         """
         Save the simulation results to a CSV file in a subdirectory named after the topology.

@@ -1,5 +1,7 @@
 import numpy as np
 
+DEBUG = False
+
 def scale_up_runtime(mnk_data, hw_config):
     """
     Calculate the runtime for a matrix multiplication operation on a systolic array.
@@ -35,7 +37,7 @@ def scale_up_runtime(mnk_data, hw_config):
     C = hw_config['sa_col']
     
     # Basic runtime calculation - implement your specific algorithm here
-    print(f"Calculating runtime for dimensions M={m}, N={n}, K={k} on {R}x{C} systolic array")
+    if DEBUG: print(f"Calculating runtime for dimensions M={m}, N={n}, K={k} on {R}x{C} systolic array")
     
     # Placeholder - replace with actual calculation
     runtime = (2*R + C + T - 2) * int(np.ceil(SR/R)) * int(np.ceil(SC/C))
@@ -70,7 +72,7 @@ def scale_up_buf_access(mnk_data, hw_config):
     SA_ROW = hw_config['sa_row']
     SA_COL = hw_config['sa_col']
     
-    print(f"Calculating buffer accesses for dimensions M={m}, N={n}, K={k}")
+    if DEBUG: print(f"Calculating buffer accesses for dimensions M={m}, N={n}, K={k}")
     
     if hw_config['dataflow'] == 'OS':
         input_buf_access = int(np.ceil(W_COL/SA_COL)) * I_ROW * I_COL
@@ -122,7 +124,7 @@ def scale_up_off_access(mnk_data, hw_config):
     SA_ROW = hw_config['sa_row']
     SA_COL = hw_config['sa_col']
     
-    print(f"Calculating off-chip accesses for dimensions M={m}, N={n}, K={k} with {dataflow} dataflow")
+    if DEBUG: print(f"Calculating off-chip accesses for dimensions M={m}, N={n}, K={k} with {dataflow} dataflow")
     
     if dataflow == 'OS':
         # input_off_access = I_ROW * I_COL  # Input matrix reads

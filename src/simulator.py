@@ -377,7 +377,8 @@ if __name__ == "__main__":
             matrix_config_path, 
             mnk_flag="gemm", 
             output_dir=output_dir, 
-            output_filename=args.output_filename
+            output_filename=args.output_filename,
+            debug=False
         )
         helper.end_timer("matrix operations simulation")
     else:
