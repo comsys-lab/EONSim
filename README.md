@@ -20,7 +20,7 @@ cd scripts
 Inside the container:
 
 ```bash
-./run_sim.sh <memory_config>
+./run_sim.sh <memory_config> # e.g., cache_LRU
 ```
 
 You can set other configurations (e.g., hardware, workload, dataset) in the `run_sim.sh` script.
