@@ -26,7 +26,7 @@ Inside the container:
 You can set other configurations (e.g., hardware, workload, dataset) in the `run_sim.sh` script.
 (We will provide a detailed guidline to set other configurations soon.)
 
-## EONSim Overview (Work in Progress)
+## EONSim Overview
 The figure below shows an overview of EONSim.
 
 <p align="center">
