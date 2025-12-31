@@ -1,7 +1,6 @@
 from Helper import Helper, print_styled_box
 from ReqGenerator import ReqGenerator
-from MemSpad import MemSpad
-from MemCache import MemCache
+from OnMem import OnMem
 from MemProfile import MemProfile
 from EnergyEstimator import EnergyEstimator
 from RuntimeModel import RuntimeModel
@@ -275,10 +274,8 @@ if __name__ == "__main__":
     helper.set_timer()    
     
     # Create mem_struct
-    if mem_type == "spad":
-        mem_struct = MemSpad(mem_size, mem_type, emb_dim, emb_dataset, vectors_per_table, mem_gran, n_format_byte, prof_multiplier)
-    elif mem_type == "cache":
-        mem_struct = MemCache(mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte)
+    if mem_type == "spad" or mem_type == "cache":
+        mem_struct = OnMem(mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table=vectors_per_table, mem_gran=mem_gran, prof_multiplier=prof_multiplier)
     elif mem_type == "profile":
         # generate the profiled dataset path by replacing the folder name with 'profiled_datasets'
         last_slash = fname.rfind('/')
@@ -295,7 +292,6 @@ if __name__ == "__main__":
         
     mem_struct.set_policy(mem_policy)
     mem_struct.print_config()
-    mem_struct.create_on_mem() # num_tables, num_rows_per_table
     # print("on_mem: {}, data structure size: {:.2f} KB".format(mem_struct.on_mem, sys.getsizeof(mem_struct.on_mem)/1024))
     print("on mem data structure size: {:.2f} KB".format(sys.getsizeof(mem_struct.on_mem)/1024))
     
@@ -317,10 +313,10 @@ if __name__ == "__main__":
     ### Off-chip Memory Simulation using mNPUsim ###
     ####################################################
     
-    helper.set_timer()
-    memory_model = MemoryModel(script_dir, mem_struct.offmem_trace, mnpusim_path, mnpusim_config_path, offchip_memory_config, npumem_config)
-    memory_model.do_memory_simulation()
-    helper.end_timer("off-chip memory simulation")
+    # helper.set_timer()
+    # memory_model = MemoryModel(script_dir, mem_struct.offmem_trace, mnpusim_path, mnpusim_config_path, offchip_memory_config, npumem_config)
+    # memory_model.do_memory_simulation()
+    # helper.end_timer("off-chip memory simulation")
     
     #-------------------------------------------------------------------
     
