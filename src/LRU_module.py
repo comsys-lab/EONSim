@@ -7,7 +7,7 @@ class Node:
         self.prev = None
         self.next = None
 
-class LRUlist:
+class LRU_module:
     """Hash map + doubly-linked list based LRU cache for O(1) operations"""
     def __init__(self, cache_way):
         self.cache_way = cache_way

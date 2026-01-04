@@ -4,8 +4,6 @@ import torch
 import itertools
 import random
 from collections import OrderedDict, Counter
-from LRUlist import LRUlist
-from srrip_list import SRRIPList
 from tqdm import tqdm
 from Helper import print_styled_header, print_styled_box
 from policies import LRUPolicy, SRRIPPolicy, OptPolicy, ProfilePolicy, SpadPolicy

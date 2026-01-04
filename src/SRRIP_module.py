@@ -1,6 +1,6 @@
 import numpy as np
 
-class SRRIPList:
+class SRRIP_module:
     """Hash map + list based SRRIP cache for O(1) tag lookup"""
     
     def __init__(self, cache_way, rrpv_bits, rrpv_insert):

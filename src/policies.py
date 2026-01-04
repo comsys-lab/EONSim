@@ -1,7 +1,7 @@
 from collections import Counter
 import numpy as np
 from LRU_module import LRU_module
-from SRRIP_module import SRRIPList
+from SRRIP_module import SRRIP_module
 import itertools
 from collections import Counter
 from tqdm import tqdm
@@ -39,7 +39,7 @@ class SRRIPPolicy(CachePolicy):
         self.rrpv_insert = cache_config[3]
 
     def initialize(self):
-        self.on_mem = [SRRIPList(self.cache_way, self.rrpv_bits, self.rrpv_insert) for _ in range(self.cache_set)]
+        self.on_mem = [SRRIP_module(self.cache_way, self.rrpv_bits, self.rrpv_insert) for _ in range(self.cache_set)]
 
     def handle_access(self, tag, index):
         return self.on_mem[index].access(tag), None

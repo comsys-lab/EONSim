@@ -55,6 +55,9 @@ if __name__ == "__main__":
     parser.add_argument("--profiling-multiplier", type=int, default=1)
     parser.add_argument("--output-filename", type=str, default=None, help="Filename for simulation results (without extension)")
     
+    # Output base directory (New)
+    parser.add_argument("--output-base-dir", type=str, default="results", help="Base directory for output results")
+    
     # Matrix config (New)
     parser.add_argument("--matrix-config", type=str, default="tpuv6e.cfg", help="Matrix configuration file name")
 
@@ -104,7 +107,7 @@ if __name__ == "__main__":
     # Generate output directory path based on workload parameters
     # Rule: "vector_dimension"_"rows_per_table"_"num_tables"_"pooling_factor"_"batch_size"
     output_dir_name = f"{emb_dim}_{vectors_per_table}_{num_tables}_{pooling_factor}_{bsz}"
-    output_dir = os.path.join("results", output_dir_name)
+    output_dir = os.path.join(args.output_base_dir, output_dir_name)
     
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -313,10 +316,10 @@ if __name__ == "__main__":
     ### Off-chip Memory Simulation using mNPUsim ###
     ####################################################
     
-    # helper.set_timer()
-    # memory_model = MemoryModel(script_dir, mem_struct.offmem_trace, mnpusim_path, mnpusim_config_path, offchip_memory_config, npumem_config)
-    # memory_model.do_memory_simulation()
-    # helper.end_timer("off-chip memory simulation")
+    helper.set_timer()
+    memory_model = MemoryModel(script_dir, mem_struct.offmem_trace, mnpusim_path, mnpusim_config_path, offchip_memory_config, npumem_config)
+    memory_model.do_memory_simulation()
+    helper.end_timer("off-chip memory simulation")
     
     #-------------------------------------------------------------------
     
@@ -364,20 +367,20 @@ if __name__ == "__main__":
     ### Run Simulation for Matrix Operations ###
     ############################################
     
-    if matrix_ops_csv_path and os.path.exists(matrix_ops_csv_path):
-        helper.set_timer()
-        print("\n[Matrix Operations Simulation]")
+    # if matrix_ops_csv_path and os.path.exists(matrix_ops_csv_path):
+    #     helper.set_timer()
+    #     print("\n[Matrix Operations Simulation]")
         
-        run_matrix_simulation(
-            matrix_ops_csv_path, 
-            matrix_config_path, 
-            mnk_flag="gemm", 
-            output_dir=output_dir, 
-            output_filename=args.output_filename,
-            debug=False
-        )
-        helper.end_timer("matrix operations simulation")
-    else:
-        print("[WARNING] Matrix operations CSV config not found or not provided. Skipping matrix simulation.")
+    #     run_matrix_simulation(
+    #         matrix_ops_csv_path, 
+    #         matrix_config_path, 
+    #         mnk_flag="gemm", 
+    #         output_dir=output_dir, 
+    #         output_filename=args.output_filename,
+    #         debug=False
+    #     )
+    #     helper.end_timer("matrix operations simulation")
+    # else:
+    #     print("[WARNING] Matrix operations CSV config not found or not provided. Skipping matrix simulation.")
 
 

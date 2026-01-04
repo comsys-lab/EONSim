@@ -4,12 +4,12 @@ import torch
 import itertools
 import random
 from collections import OrderedDict, Counter
-from LRUlist import LRUlist
+from LRU_module import LRU_module
 from tqdm import tqdm
 from Helper import print_styled_header, print_styled_box
 from itertools import chain
 # from srrip_cache import SRRIPCache
-from srrip_list import SRRIPList  # Add Python-based SRRIP implementation
+from SRRIP_module import SRRIP_module  # Add Python-based SRRIP implementation
 
 class MemProfile:
     def __init__(self, mem_size, mem_type, cache_config, emb_dim, emb_dataset, vectors_per_table, mem_gran, n_format_byte, profiled_path, prof_multiplier=1):
@@ -115,7 +115,7 @@ class MemProfile:
         if self.mem_policy == "profile_dynamic_cache":            
             # self.logger_size = int((self.mem_size / self.emb_dim) / self.n_format_byte) * self.access_per_vector # multiply access_per_vector to enable the vector-level LRU cache simulation
             self.logger_size = self.spad_size # access-level logging -> after all, the logger should be able to contain all the entries in the spad (vector-level logging is meaningless)
-            self.logger = LRUlist(self.logger_size) # Changed: use Python-based LRUlist instead of C++ LRUCache
+            self.logger = LRU_module(self.logger_size) # Changed: use Python-based LRU_module instead of C++ LRUCache
             # print the number of vectors that the logger can contain assuming that logger performs vector-level logging in real implementation (not in this simulation)
             print("[DEBUG] logger can contain {} vectors".format(int(self.logger_size / self.access_per_vector)))
         elif self.mem_policy == "profile_dynamic_SRRIP":
