@@ -213,12 +213,8 @@ if __name__ == "__main__":
     ################################
 
     helper.set_timer()
-    
-    if "criteo" in fname.lower():
-        reqgen = ReqGenerator_temp_criteo(nbatches, n_format_byte, embsize, emb_dim, bsz, fname, num_indices_per_lookup, mem_gran)
-    else:
-        reqgen = ReqGenerator(nbatches, n_format_byte, embsize, emb_dim, bsz, fname, num_indices_per_lookup, mem_gran)
-    # reqgen = ReqGenerator_temp_criteo(nbatches, n_format_byte, embsize, emb_dim, bsz, fname, num_indices_per_lookup, mem_gran)
+        
+    reqgen = ReqGenerator(nbatches, n_format_byte, embsize, emb_dim, bsz, fname, num_indices_per_lookup, mem_gran)
     reqgen.data_gen()
     
     # # temporal test: store reqgen.ls_i np array in a txt file, each element in each row in the txt file.
