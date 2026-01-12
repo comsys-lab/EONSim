@@ -12,8 +12,12 @@ EONSim is a neural processing unit (NPU) simulator focusing on embedding vector 
 We provide a Dockerfile to build an experimental environment.
 
 ```bash
-cd scripts
-./create_container.sh build # build an image
+cd tools/mNPUsim/DRAMsim3 # compile mNPUsim
+make libdramsim3.so
+cd ..
+make
+cd ../../scripts
+./create_container.sh build # build a docker image
 ./create_container.sh # create a container
 ```
 
