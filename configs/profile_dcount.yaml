@@ -1,3 +1,7 @@
+core_dim:
+  row: 2
+  col: 2
+
 vector_unit:
   lanes: 128
   sublanes: 8
@@ -7,8 +11,16 @@ matrix_unit:
   mxu_dimension: 128
   num_mxus: 4
 
-memory:
+local_buffer:
   mem_size: 131072
   mem_type: profile
   policy: dynamic_count
   access_granularity: 128
+  access_latency: 1
+
+global_buffer:
+  mem_size: 0
+  mem_type: profile
+  policy: dynamic_count
+  access_granularity: 128
+  access_latency: 15

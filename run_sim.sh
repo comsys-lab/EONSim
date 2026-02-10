@@ -7,7 +7,8 @@ mkdir -p $OUT
 
 ### workload & dataset ###
 workload_path_dir="$(pwd)/workload_configs/"
-workload="dlrm_rmc2_small"
+# workload="dlrm_rmc2_small"
+workload="dlrm_dcnv2"
 WORKLOAD_CONFIG="${workload_path_dir}${workload}"
 
 data_path_dir="$(pwd)/datasets/"
@@ -19,7 +20,7 @@ MEM_CFG=$1
 MATRIX_CFG="tpuv6e.cfg"
 
 NUM_BATCH=1
-BS=32
+BS=256
 
 # Set PROF_MULTIPLIER to $2 if provided, otherwise default to 1
 PROF_MULTIPLIER=${2:-1}

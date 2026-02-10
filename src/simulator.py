@@ -1,6 +1,6 @@
 from Helper import Helper, print_styled_box
 from ReqGenerator import ReqGenerator
-from OnMem import OnMem
+from CoreOnmem import CoreOnmem
 from MemProfile import MemProfile
 from EnergyEstimator import EnergyEstimator
 from RuntimeModel import RuntimeModel
@@ -138,65 +138,53 @@ if __name__ == "__main__":
     # Matrix config path construction
     matrix_config_path = os.path.join(os.path.dirname(script_dir), 'configs', 'scalesim_config', args.matrix_config)
     
-    print(f"[DEBUG] yaml_config_path: {config_path}")
+    print(f"[DEBUG] memory_config_path: {config_path}")
     print(f"[DEBUG] mnpusim_config_path: {mnpusim_config_path}")
     print(f"[DEBUG] matrix_config_path: {matrix_config_path}")
     
-    # Try YAML format first
-    yaml_config_path = config_path
-    print(f"[DEBUG] yaml_config_path: {yaml_config_path}")
+    # Load memory configuration using ConfigLoader
+    mem_config = ConfigLoader.load_memory_config(config_path)
     
-    mem_type = None
-    mem_policy = None
-    cache_way = 0
-    cache_line_size = 0    
-    rrpv_bits = 0
-    rrip_insert = 0
+    # Extract local buffer configuration
+    local_buf = mem_config['local_buffer']
+    mem_size = local_buf['mem_size']
+    mem_type = local_buf['mem_type']
+    mem_policy = local_buf['mem_policy']
+    mem_gran = local_buf['mem_gran']
+    mem_latency = local_buf['mem_latency']
+    cache_config = mem_config['cache_config']
     
-    # Try to load YAML config first
-    if os.path.exists(yaml_config_path):
-        with open(yaml_config_path, 'r') as yaml_cfg:
-            config_data = yaml.safe_load(yaml_cfg)
-            
-            # Parse memory configuration
-            memory_config = config_data.get('memory', {})
-            mem_size = memory_config.get('mem_size', 0)  # KB
-            mem_type = memory_config.get('mem_type', '')
-            mem_policy = mem_type + '_' + memory_config.get('policy', '')
-            mem_gran = memory_config.get('access_granularity', 0)  # B
-            
-            # Parse vector unit configuration
-            vector_unit_config = config_data.get('vector_unit', {})
-            vector_lanes = vector_unit_config.get('lanes', 128)
-            vector_sublanes = vector_unit_config.get('sublanes', 8)
-            vector_alus_per_sublanes = vector_unit_config.get('ALUs_per_sublanes', 4)
-            
-            # Parse matrix unit configuration
-            matrix_unit_config = config_data.get('matrix_unit', {})
-            mxu_dimension = matrix_unit_config.get('mxu_dimension', 128)
-            num_mxus = matrix_unit_config.get('num_mxus', 4)
-            
-            if mem_type == "cache":
-                cache_way = memory_config.get('cache_way', 0)
-                cache_line_size = mem_gran  # Use access_granularity as cache_line_size
-                
-            if mem_policy == 'cache_SRRIP' or mem_policy == 'profile_dynamic_SRRIP':
-                rrpv_bits = memory_config.get('RRPV_bits', 0)
-                rrip_insert = memory_config.get('RRPV_insertion', 0)
-                
-            # temp
-            if mem_policy == 'profile_dynamic_SRRIP':
-                rrpv_bits = 4
-                rrip_insert = 14
-    else:
-        raise FileNotFoundError(f"Config file not found: {yaml_config_path} or {config_path}")
-        
-    cache_config = [cache_way, cache_line_size, rrpv_bits, rrip_insert]
+    # Extract global buffer configuration
+    global_buf = mem_config['global_buffer']
+    global_mem_size = global_buf['mem_size']
+    global_mem_type = global_buf['mem_type']
+    global_mem_policy = global_buf['mem_policy']
+    global_mem_latency = global_buf['mem_latency']
+    global_cache_config = mem_config['global_cache_config']
+    
+    # Extract core dimension
+    core_dim = mem_config['core_dim']
+    core_row = core_dim['row']
+    core_col = core_dim['col']
+    
+    # Extract vector unit configuration
+    vector_unit = mem_config['vector_unit']
+    vector_lanes = vector_unit['lanes']
+    vector_sublanes = vector_unit['sublanes']
+    vector_alus_per_sublanes = vector_unit['alus_per_sublanes']
+    
+    # Extract matrix unit configuration
+    matrix_unit = mem_config['matrix_unit']
+    mxu_dimension = matrix_unit['mxu_dimension']
+    num_mxus = matrix_unit['num_mxus']
     
     # Print the parsed configuration for debugging
+    print(f"[DEBUG] Core Dimension - Row: {core_row}, Col: {core_col}")
     print(f"[DEBUG] Vector Unit - Lanes: {vector_lanes}, Sublanes: {vector_sublanes}, ALUs per sublanes: {vector_alus_per_sublanes}")
     print(f"[DEBUG] Matrix Unit - MXU dimension: {mxu_dimension}, Number of MXUs: {num_mxus}")
-    print(f"[DEBUG] Memory - Type: {mem_type}, Size: {mem_size} KB, Policy: {mem_policy}")
+    print(f"[DEBUG] Local Buffer - Type: {mem_type}, Size: {mem_size} KB, Policy: {mem_policy}, Latency: {mem_latency} cycles")
+    if global_mem_size > 0:
+        print(f"[DEBUG] Global Buffer - Type: {global_mem_type}, Size: {global_mem_size} KB, Policy: {global_mem_policy}, Latency: {global_mem_latency} cycles")
 
     # these are for convenience...
     emb_config = np.fromstring(embsize, dtype=int, sep="-")
@@ -272,9 +260,9 @@ if __name__ == "__main__":
     
     helper.set_timer()    
     
-    # Create mem_struct
+    # Create core on-memory object
     if mem_type == "spad" or mem_type == "cache":
-        mem_struct = OnMem(mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table=vectors_per_table, mem_gran=mem_gran, prof_multiplier=prof_multiplier)
+        core_onmem_obj = CoreOnmem(mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table=vectors_per_table, mem_gran=mem_gran, prof_multiplier=prof_multiplier, mem_latency=mem_latency)
     elif mem_type == "profile":
         # generate the profiled dataset path by replacing the folder name with 'profiled_datasets'
         last_slash = fname.rfind('/')
@@ -282,17 +270,17 @@ if __name__ == "__main__":
         file_name = fname[last_slash:]
         profiled_path = fname[:second_last_slash+1] + 'profiled_datasets' + file_name
         # print("[DEBUG] profiled_path: {}".format(profiled_path))
-        # print("[DEBUG] argument of mem_struct: {}, {}, {}, {}, {}, {}, {}, {}".format(mem_size, mem_type, emb_dim, emb_dataset, vectors_per_table, mem_gran, n_format_byte, profiled_path))
+        # print("[DEBUG] argument of core_onmem_obj: {}, {}, {}, {}, {}, {}, {}, {}".format(mem_size, mem_type, emb_dim, emb_dataset, vectors_per_table, mem_gran, n_format_byte, profiled_path))
         
-        mem_struct = MemProfile(mem_size, mem_type, cache_config, emb_dim, emb_dataset, vectors_per_table, mem_gran, n_format_byte, profiled_path, prof_multiplier)        
+        core_onmem_obj = MemProfile(mem_size, mem_type, cache_config, emb_dim, emb_dataset, vectors_per_table, mem_gran, n_format_byte, profiled_path, prof_multiplier)        
         
         # if mem_policy == "profile_dynamic_count":
-        mem_struct.set_index_trace(reqgen.lS_i)
+        core_onmem_obj.set_index_trace(reqgen.lS_i)
         
-    mem_struct.set_policy(mem_policy)
-    mem_struct.print_config()
-    # print("on_mem: {}, data structure size: {:.2f} KB".format(mem_struct.on_mem, sys.getsizeof(mem_struct.on_mem)/1024))
-    print("on mem data structure size: {:.2f} KB".format(sys.getsizeof(mem_struct.on_mem)/1024))
+    core_onmem_obj.set_policy(mem_policy)
+    core_onmem_obj.print_config()
+    # print("on_mem: {}, data structure size: {:.2f} KB".format(core_onmem_obj.on_mem, sys.getsizeof(core_onmem_obj.on_mem)/1024))
+    print("on mem data structure size: {:.2f} KB".format(sys.getsizeof(core_onmem_obj.on_mem)/1024))
     
     helper.end_timer("create memory structure")
 
@@ -303,7 +291,7 @@ if __name__ == "__main__":
     ##########################
     
     helper.set_timer()
-    mem_struct.do_simulation()
+    core_onmem_obj.do_simulation()
     helper.end_timer("do simulation")
     
     #-------------------------------------------------------------------
@@ -312,10 +300,10 @@ if __name__ == "__main__":
     ### Off-chip Memory Simulation using mNPUsim ###
     ####################################################
     
-    helper.set_timer()
-    memory_model = MemoryModel(script_dir, mem_struct.offmem_trace, mnpusim_path, mnpusim_config_path, offchip_memory_config, npumem_config)
-    memory_model.do_memory_simulation()
-    helper.end_timer("off-chip memory simulation")
+    # helper.set_timer()
+    # memory_model = MemoryModel(script_dir, core_onmem_obj.offmem_trace, mnpusim_path, mnpusim_config_path, offchip_memory_config, npumem_config)
+    # memory_model.do_memory_simulation()
+    # helper.end_timer("off-chip memory simulation")
     
     #-------------------------------------------------------------------
     
@@ -351,7 +339,7 @@ if __name__ == "__main__":
     # elif n_format_byte == 1:
     #     energy_n_format = "int8"
     
-    # energy_est = EnergyEstimator(workload_type, workload_config_path, tech_node, energy_table_path, energy_n_format, mem_struct.access_results, access_per_batch, mem_gran)
+    # energy_est = EnergyEstimator(workload_type, workload_config_path, tech_node, energy_table_path, energy_n_format, core_onmem_obj.access_results, access_per_batch, mem_gran)
     # # energy_est.print_all_config()
     # energy_est.do_energy_estimation()
     
@@ -359,24 +347,24 @@ if __name__ == "__main__":
     
     #-------------------------------------------------------------------
     
-    ############################################
-    ### Run Simulation for Matrix Operations ###
-    ############################################
+    ###########################################
+    ## Run Simulation for Matrix Operations ###
+    ###########################################
     
-    # if matrix_ops_csv_path and os.path.exists(matrix_ops_csv_path):
-    #     helper.set_timer()
-    #     print("\n[Matrix Operations Simulation]")
+    if matrix_ops_csv_path and os.path.exists(matrix_ops_csv_path):
+        helper.set_timer()
+        print("\n[Matrix Operations Simulation]")
         
-    #     run_matrix_simulation(
-    #         matrix_ops_csv_path, 
-    #         matrix_config_path, 
-    #         mnk_flag="gemm", 
-    #         output_dir=output_dir, 
-    #         output_filename=args.output_filename,
-    #         debug=False
-    #     )
-    #     helper.end_timer("matrix operations simulation")
-    # else:
-    #     print("[WARNING] Matrix operations CSV config not found or not provided. Skipping matrix simulation.")
+        run_matrix_simulation(
+            matrix_ops_csv_path, 
+            matrix_config_path, 
+            mnk_flag="gemm", 
+            output_dir=output_dir, 
+            output_filename=args.output_filename,
+            debug=False
+        )
+        helper.end_timer("matrix operations simulation")
+    else:
+        print("[WARNING] Matrix operations CSV config not found or not provided. Skipping matrix simulation.")
 
 

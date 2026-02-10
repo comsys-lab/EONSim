@@ -8,7 +8,7 @@ from tqdm import tqdm
 from Helper import print_styled_header, print_styled_box
 from policies import LRUPolicy, SRRIPPolicy, OptPolicy, ProfilePolicy, SpadPolicy
 
-class OnMem:
+class CoreOnmem:
     def __init__(self, mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table=0, mem_gran=0, prof_multiplier=1):
         self.mem_size = 0 # KB
         self.mem_type = "init"

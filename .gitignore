@@ -29,6 +29,8 @@ results_val_forv6e_tables_b128/
 results_val_forv6e_tables_b256/
 results_val_forv4/
 results_val_forv4_tables/
+results_val_forinf2/
+results_val_forinf2_tables/
 
 ### Temporal or Large Datasets
 datasets/vectordb/deep250m_100m.txt
