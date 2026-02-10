@@ -1,10 +1,13 @@
 # EONSim
 
+### Note: We are actively refactoring the simulator to enhance the architecture. We will release the stable version with updated documentation shortly!
+
 ## Table of Contents
 - [Introduction](#introduction)
 - [EONSim Overview](#eonsim-overview-work-in-progress)
 
 ## Introduction
+
 EONSim is a neural processing unit (NPU) simulator focusing on embedding vector operations and on-chip memory models.
 
 
