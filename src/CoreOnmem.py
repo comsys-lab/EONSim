@@ -31,14 +31,14 @@ class CoreOnmem:
         self.rrpv_bits = 0
         self.rrpv_insert = 0
         
-        # SPAD specific
+        # SPM specific
         self.mem_gran = mem_gran
         self.prof_multiplier = prof_multiplier
         self.vectors_per_table = 0 # This will be set in set_params
 
         self.access_results = []
         self.spad_load_results = []
-               
+        
         self.set_params(mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table, mem_gran, prof_multiplier, mem_latency)
         
     def set_params(self, mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table=0, mem_gran=0, prof_multiplier=1, mem_latency=1):

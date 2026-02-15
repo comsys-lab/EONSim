@@ -44,7 +44,7 @@ if __name__ == "__main__":
     # memory config
     parser.add_argument("--memory-config", type=str, default="spad_naive")
     
-    # workload config
+    # workload config (New)
     parser.add_argument("--workload-config", type=str, required=True, help="Path to workload config (without extension)")
 
     # execution and dataset related parameters
@@ -55,10 +55,10 @@ if __name__ == "__main__":
     parser.add_argument("--profiling-multiplier", type=int, default=1)
     parser.add_argument("--output-filename", type=str, default=None, help="Filename for simulation results (without extension)")
     
-    # Output base directory
+    # Output base directory (New)
     parser.add_argument("--output-base-dir", type=str, default="results", help="Base directory for output results")
     
-    # Matrix ops. config
+    # Matrix config (New)
     parser.add_argument("--matrix-config", type=str, default="tpuv6e.cfg", help="Matrix configuration file name")
 
     # mNPUsim related parameters
@@ -99,10 +99,13 @@ if __name__ == "__main__":
     n_format_bits = args.numeric_format_bits
     n_format_byte = int(np.ceil(n_format_bits / 8))
     nbatches = args.num_batches
+    # embsize and emb_dim are already set above
     bsz = args.batch_size # batch size
     fname = args.data_generation
+    # num_indices_per_lookup is already set above
     
     # Generate output directory path based on workload parameters
+    # Rule: "vector_dimension"_"rows_per_table"_"num_tables"_"pooling_factor"_"batch_size"
     output_dir_name = f"{emb_dim}_{vectors_per_table}_{num_tables}_{pooling_factor}_{bsz}"
     output_dir = os.path.join(args.output_base_dir, output_dir_name)
     
@@ -115,6 +118,7 @@ if __name__ == "__main__":
         f.write(output_dir)
     
     prof_multiplier = args.profiling_multiplier
+    # workload_type is already set above
     
     # Script dir setup
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -123,6 +127,7 @@ if __name__ == "__main__":
     # mNPUsim related configurations
     offchip_memory_config = args.offchip_memory_config
     npumem_config = args.npumem_config
+    # mnpusim_path = "/home/choi/simulators/mNPUsim"
     mnpusim_path = os.path.join(os.path.dirname(script_dir), 'tools', 'mNPUsim')
     print(f"[DEBUG] mnpusim_path: {mnpusim_path}")
     
@@ -200,6 +205,19 @@ if __name__ == "__main__":
     reqgen = ReqGenerator(nbatches, n_format_byte, embsize, emb_dim, bsz, fname, num_indices_per_lookup, mem_gran)
     reqgen.data_gen()
     
+    # # temporal test: store reqgen.ls_i np array in a txt file, each element in each row in the txt file.
+    # with open("ls_i.txt", "w") as f:
+    #     for i in range(len(reqgen.lS_i)):
+    #         for j in range(len(reqgen.lS_i[i])):
+    #             for k in range(len(reqgen.lS_i[i][j])):
+    #                 f.write(str(reqgen.lS_i[i][j][k]) + "\n")
+    #             # f.write("\n")
+    # f.close()
+    
+    # exit()
+    
+    
+    
     print_general_config(reqgen.nbatches, reqgen.n_format_byte, reqgen.bsz, reqgen.embsize, reqgen.emb_dim, reqgen.num_indices_per_lookup, reqgen.fname)
 
     helper.end_timer("model and data gen")
@@ -213,8 +231,26 @@ if __name__ == "__main__":
     helper.set_timer()
     reqgen.index_to_addr()
     
+    # reqgen.do_batch_access_pattern_analysis() # DEBUG
+    # exit()
+    
     emb_dataset = reqgen.addr_trace
+    # print("len(emb_dataset): {}".format(len(emb_dataset)))
+    # print("len(emb_dataset[0]): {}".format(len(emb_dataset[0])))
+    # print("emb_dataset[0][0].shape: {}".format(emb_dataset[0][0].shape))
     helper.end_timer("address generation")
+    
+    # temporal test: store reqgen.addr_trace np array in a txt file, each element in each row in the txt file.
+    # with open("rand_.txt", "w") as f:
+    #     for i in range(len(reqgen.addr_trace)):
+    #         for j in range(len(reqgen.addr_trace[i])):
+    #             for k in range(len(reqgen.addr_trace[i][j])):
+    #                 f.write(str(reqgen.addr_trace[i][j][k]) + "\n")
+    #                 # f.write(str(reqgen.addr_trace[i][j][k]) + ",")
+    #             # f.write("\n")
+    # f.close()
+    
+    # exit()
 
     #-------------------------------------------------------------------
     
@@ -224,11 +260,27 @@ if __name__ == "__main__":
     
     helper.set_timer()    
     
-    # Create core on-memory object with the parsed configuration parameters
-    core_onmem_obj = CoreOnmem(mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table=vectors_per_table, mem_gran=mem_gran, prof_multiplier=prof_multiplier, mem_latency=mem_latency)
+    # Create core on-memory object
+    if mem_type == "spad" or mem_type == "cache":
+        core_onmem_obj = CoreOnmem(mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table=vectors_per_table, mem_gran=mem_gran, prof_multiplier=prof_multiplier, mem_latency=mem_latency)
+    elif mem_type == "profile":
+        # generate the profiled dataset path by replacing the folder name with 'profiled_datasets'
+        last_slash = fname.rfind('/')
+        second_last_slash = fname[:last_slash].rfind('/')
+        file_name = fname[last_slash:]
+        profiled_path = fname[:second_last_slash+1] + 'profiled_datasets' + file_name
+        # print("[DEBUG] profiled_path: {}".format(profiled_path))
+        # print("[DEBUG] argument of core_onmem_obj: {}, {}, {}, {}, {}, {}, {}, {}".format(mem_size, mem_type, emb_dim, emb_dataset, vectors_per_table, mem_gran, n_format_byte, profiled_path))
+        
+        core_onmem_obj = MemProfile(mem_size, mem_type, cache_config, emb_dim, emb_dataset, vectors_per_table, mem_gran, n_format_byte, profiled_path, prof_multiplier)        
+        
+        # if mem_policy == "profile_dynamic_count":
+        core_onmem_obj.set_index_trace(reqgen.lS_i)
+        
     core_onmem_obj.set_policy(mem_policy)
     core_onmem_obj.print_config()
-    # print("on mem data structure size: {:.2f} KB".format(sys.getsizeof(core_onmem_obj.on_mem)/1024))
+    # print("on_mem: {}, data structure size: {:.2f} KB".format(core_onmem_obj.on_mem, sys.getsizeof(core_onmem_obj.on_mem)/1024))
+    print("on mem data structure size: {:.2f} KB".format(sys.getsizeof(core_onmem_obj.on_mem)/1024))
     
     helper.end_timer("create memory structure")
 
@@ -248,10 +300,10 @@ if __name__ == "__main__":
     ### Off-chip Memory Simulation using mNPUsim ###
     ####################################################
     
-    helper.set_timer()
-    memory_model = MemoryModel(script_dir, core_onmem_obj.offmem_trace, mnpusim_path, mnpusim_config_path, offchip_memory_config, npumem_config)
-    memory_model.do_memory_simulation()
-    helper.end_timer("off-chip memory simulation")
+    # helper.set_timer()
+    # memory_model = MemoryModel(script_dir, core_onmem_obj.offmem_trace, mnpusim_path, mnpusim_config_path, offchip_memory_config, npumem_config)
+    # memory_model.do_memory_simulation()
+    # helper.end_timer("off-chip memory simulation")
     
     #-------------------------------------------------------------------
     
