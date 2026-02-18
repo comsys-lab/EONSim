@@ -45,37 +45,34 @@ class SRRIPPolicy(CachePolicy):
         return self.on_mem[index].access(tag), None
 
 class OptPolicy(CachePolicy):
-    def __init__(self, cache_config, emb_dataset):
+    def __init__(self, cache_config, emb_dataset, num_cores=1):
         super().__init__(cache_config)
         
-        # Reconstruct tag bit logic from cache_config
-        # cache_config = [way, line_size, rrpv_bits, rrpv_insert, cache_set]
         self.cache_way = cache_config[0]
         self.cache_line_size = cache_config[1]
         self.cache_set = cache_config[4]
+        self.num_cores = num_cores
         
-        # Calculate offset bits to identify unique cache lines (Block Address)
         cache_offset_bits = int(np.log2(self.cache_line_size-1)+1)
         offset_mask_bits = (1 << cache_offset_bits) - 1
         
         print("Preprocessing OPT trace (Flattening & Line Identification)...")
-        # Flatten the dataset: Batch -> Table -> Access
-        # emb_dataset is List[List[np.array]]
-        all_arrays = [t for batch in emb_dataset for t in batch]
-        flat_addr = np.concatenate(all_arrays)
         
-        # Convert to Block Addresses (Tag + Index)
-        # We must use the full block address to distinguish lines in different sets that share the same tag.
+        if num_cores > 1:
+            # Multicore: flatten in round-robin order
+            flat_addr = self._flatten_multicore_roundrobin(emb_dataset)
+        else:
+            # Single-core: flatten in batch->table order
+            all_arrays = [t for batch in emb_dataset for t in batch]
+            flat_addr = np.concatenate(all_arrays)
+        
         self.flat_lines = flat_addr & ~offset_mask_bits
         
         print("Preprocessing OPT trace (Calculating Next Use)...")
-        # Precompute next access indices (Belady's OPT)
-        # next_access[i] contains the index j > i where the line at i is accessed next.
         trace_len = len(self.flat_lines)
         self.next_access = np.full(trace_len, trace_len + 1, dtype=np.int64)
         
         last_seen = {}
-        # Iterate in reverse to find next usage
         for i in range(trace_len - 1, -1, -1):
             line = self.flat_lines[i]
             if line in last_seen:
@@ -84,6 +81,72 @@ class OptPolicy(CachePolicy):
             
         self.curr_cycle = 0
         print("OPT Preprocessing Done.")
+    
+    def _flatten_multicore_roundrobin(self, emb_dataset):
+        """Flatten dataset in round-robin order matching multicore simulation"""
+        # Partition tables across cores
+        num_tables = len(emb_dataset[0])
+        tables_per_core = num_tables // self.num_cores
+        remainder = num_tables % self.num_cores
+        
+        table_ranges = []
+        start_idx = 0
+        for core_id in range(self.num_cores):
+            extra = 1 if core_id < remainder else 0
+            end_idx = start_idx + tables_per_core + extra
+            table_ranges.append((start_idx, end_idx))
+            start_idx = end_idx
+        
+        # Create iterators for each core
+        class SimpleIterator:
+            def __init__(self, dataset, table_start, table_end):
+                self.dataset = dataset
+                self.table_start = table_start
+                self.table_end = table_end
+                self.batch_idx = 0
+                self.table_idx = table_start
+                self.vec_idx = 0
+            
+            def has_next(self):
+                return self.batch_idx < len(self.dataset)
+            
+            def get_next(self):
+                if not self.has_next():
+                    return None
+                addr = self.dataset[self.batch_idx][self.table_idx][self.vec_idx]
+                self._advance()
+                return addr
+            
+            def _advance(self):
+                self.vec_idx += 1
+                if self.vec_idx >= len(self.dataset[self.batch_idx][self.table_idx]):
+                    self.vec_idx = 0
+                    self.table_idx += 1
+                    if self.table_idx >= self.table_end:
+                        self.table_idx = self.table_start
+                        self.batch_idx += 1
+        
+        iterators = [
+            SimpleIterator(emb_dataset, table_start, table_end)
+            for table_start, table_end in table_ranges
+        ]
+        
+        # Round-robin collection
+        flat_list = []
+        tick = 0
+        active = [True] * self.num_cores
+        
+        while any(active):
+            core_id = tick % self.num_cores
+            if active[core_id] and iterators[core_id].has_next():
+                addr = iterators[core_id].get_next()
+                if addr is not None:
+                    flat_list.append(addr)
+                if not iterators[core_id].has_next():
+                    active[core_id] = False
+            tick += 1
+        
+        return np.array(flat_list, dtype=np.int64)
 
     def initialize(self):
         # on_mem stores the tags currently in cache
@@ -150,7 +213,7 @@ class ProfilePolicy(LRUPolicy):
         self.profile_filter = self.create_profile_filter()
 
 class SpadPolicy(CachePolicy):
-    def __init__(self, mem_size, mem_gran, emb_dim, n_format_byte, emb_dataset, vectors_per_table, prof_multiplier, spad_policy):
+    def __init__(self, mem_size, mem_gran, emb_dim, n_format_byte, emb_dataset, vectors_per_table, prof_multiplier, spad_policy, num_cores=1):
         self.mem_size = mem_size
         self.mem_gran = mem_gran
         self.emb_dim = emb_dim
@@ -159,6 +222,7 @@ class SpadPolicy(CachePolicy):
         self.vectors_per_table = vectors_per_table
         self.prof_multiplier = prof_multiplier
         self.spad_policy = spad_policy
+        self.num_cores = num_cores
         self.num_tables = len(self.emb_dataset[0])
         self.access_per_vector = np.ceil(self.emb_dim * self.n_format_byte / self.mem_gran).astype(np.int32)
         self.spad_size = np.floor(self.mem_size / self.mem_gran).astype(np.int32)
@@ -184,25 +248,50 @@ class SpadPolicy(CachePolicy):
 
     def set_spad_naive(self):
         on_mem_set = []
-        counter = 0
-        break_flag = False
+        
+        # Partition tables across cores (same logic as CoreOnmem._partition_tables_across_cores)
+        tables_per_core = self.num_tables // self.num_cores
+        remainder = self.num_tables % self.num_cores
+        vectors_per_core = self.spad_size // self.num_cores
+        
         with tqdm(total=self.spad_size, desc="Setting spad") as pbar:
-            for t_i in range(self.num_tables):
-                for v_i in range(self.vectors_per_table):
-                    for d_i in range(self.access_per_vector):
-                        bytes_per_vec = (self.emb_dim * self.n_format_byte - 1).bit_length()
-                        tbl_bits = t_i << int(np.log2(self.vectors_per_table-1)+1 + bytes_per_vec)
-                        vec_idx = v_i << bytes_per_vec
-                        dim_bits = self.mem_gran * d_i
-                        this_addr = tbl_bits + vec_idx + dim_bits
-                        on_mem_set.append(this_addr)
-                        counter += 1
-                        if counter == self.spad_size:
-                            break_flag = True
-                            break
-                        pbar.update(1)
+            counter = 0
+            start_idx = 0
+            
+            for core_id in range(self.num_cores):
+                # Calculate table range for this core (same as _partition_tables_across_cores)
+                extra = 1 if core_id < remainder else 0
+                table_end = start_idx + tables_per_core + extra
+                
+                print(f"[DEBUG] Core {core_id}: tables {start_idx}-{table_end-1}, allocating {vectors_per_core} memory accesses")
+                
+                # Allocate vectors_per_core for this core from its assigned tables
+                core_counter = 0
+                break_flag = False
+                
+                for t_i in range(start_idx, table_end):
+                    for v_i in range(self.vectors_per_table):
+                        for d_i in range(self.access_per_vector):
+                            bytes_per_vec = (self.emb_dim * self.n_format_byte - 1).bit_length()
+                            tbl_bits = t_i << int(np.log2(self.vectors_per_table-1)+1 + bytes_per_vec)
+                            vec_idx = v_i << bytes_per_vec
+                            dim_bits = self.mem_gran * d_i
+                            this_addr = tbl_bits + vec_idx + dim_bits
+                            on_mem_set.append(this_addr)
+                            core_counter += 1
+                            counter += 1
+                            pbar.update(1)
+                            
+                            if core_counter >= vectors_per_core:
+                                break_flag = True
+                                break
+                        if break_flag: break
                     if break_flag: break
-                if break_flag: break
+                
+                # Move to next core's table range
+                start_idx = table_end
+        
+        print(f"[DEBUG] Total loaded to spad: {len(on_mem_set)} addresses")
         return set(on_mem_set)
 
     def set_spad_random(self):

@@ -1,6 +1,7 @@
 from Helper import Helper, print_styled_box
 from ReqGenerator import ReqGenerator
-from CoreOnmem import CoreOnmem
+# from CoreOnmem import CoreOnmem
+from CoreOnmem_multicore import CoreOnmem
 from MemProfile import MemProfile
 from EnergyEstimator import EnergyEstimator
 from RuntimeModel import RuntimeModel
@@ -161,6 +162,7 @@ if __name__ == "__main__":
     core_dim = mem_config['core_dim']
     core_row = core_dim['row']
     core_col = core_dim['col']
+    num_cores = core_row * core_col
     
     # Extract vector unit configuration
     vector_unit = mem_config['vector_unit']
@@ -225,7 +227,7 @@ if __name__ == "__main__":
     helper.set_timer()    
     
     # Create core on-memory object with the parsed configuration parameters
-    core_onmem_obj = CoreOnmem(mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table=vectors_per_table, mem_gran=mem_gran, prof_multiplier=prof_multiplier, mem_latency=mem_latency)
+    core_onmem_obj = CoreOnmem(mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table=vectors_per_table, mem_gran=mem_gran, prof_multiplier=prof_multiplier, mem_latency=mem_latency, num_cores=num_cores)
     core_onmem_obj.set_policy(mem_policy)
     core_onmem_obj.print_config()
     # print("on mem data structure size: {:.2f} KB".format(sys.getsizeof(core_onmem_obj.on_mem)/1024))
