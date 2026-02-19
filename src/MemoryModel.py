@@ -5,7 +5,7 @@ import random
 from Helper import print_styled_box
 
 class MemoryModel:
-    def __init__(self, script_dir, offmem_trace, mnpusim_path, mnpusim_config_path, offchip_memory_config, npumem_config):
+    def __init__(self, script_dir, offmem_trace, mnpusim_path, mnpusim_config_path, offchip_memory_config, npumem_config, debug=False):
         print("\n\n\n START OFF-CHIP MEMORY SIMULATION \n")
         
         self.script_dir = script_dir
@@ -19,6 +19,7 @@ class MemoryModel:
         self.eonsim_results_dir_name = None  # Will store the directory name for mnpusim command
         self.eonsim_dir_name = "eonsim_config"
         self.eonsim_config_dir = os.path.join(self.mnpusim_path, self.eonsim_dir_name)
+        self.debug = debug
 
         # Results
         self.offmem_cycles = 0
@@ -37,7 +38,7 @@ class MemoryModel:
                 break
         
         os.makedirs(self.intermediate_dir)
-        print(f"[DEBUG] Created intermediate directory: {self.intermediate_dir}")
+        if self.debug: print(f"[DEBUG] Created intermediate directory: {self.intermediate_dir}")
         
     def setup_eonsim_results_directory(self):
         """Create eonsim_results directory with unique random number suffix"""
@@ -51,7 +52,7 @@ class MemoryModel:
                 self.eonsim_results_dir_name = candidate_dir_name
                 break
         
-        print(f"[DEBUG] Created eonsim_results directory name: {self.eonsim_results_dir_name}")
+        if self.debug: print(f"[DEBUG] Created eonsim_results directory name: {self.eonsim_results_dir_name}")
         
     def generate_trace_file(self):
         """Generate flattened trace file for mNPUsim"""
@@ -69,15 +70,15 @@ class MemoryModel:
                 if not addr == -1:  # Skip -1 entries
                     f.write(str(addr) + ",")            
         
-        print(f"[DEBUG] Generated trace file: {offmem_trace_path}")
+        if self.debug: print(f"[DEBUG] Generated trace file: {offmem_trace_path}")
         
         # Print trace statistics
         total_elements = len(flat_offmem_trace)
         minus_one_count = sum(1 for addr in flat_offmem_trace if addr == -1)
         
-        print(f"[DEBUG] Total elements in offmem_trace: {total_elements}")
-        print(f"[DEBUG] -1 count in offmem_trace: {minus_one_count}")
-        print(f"[DEBUG] -1 ratio in offmem_trace: {minus_one_count/total_elements:.4f}")
+        if self.debug: print(f"[DEBUG] Total elements in offmem_trace: {total_elements}")
+        if self.debug: print(f"[DEBUG] -1 count in offmem_trace: {minus_one_count}")
+        if self.debug: print(f"[DEBUG] -1 ratio in offmem_trace: {minus_one_count/total_elements:.4f}")
         
         return offmem_trace_path
         
@@ -85,14 +86,14 @@ class MemoryModel:
         """Remove existing mNPUsim results directory"""
         if os.path.exists(self.eonsim_results_dir):
             shutil.rmtree(self.eonsim_results_dir)
-            print(f"[DEBUG] Removed existing eonsim_results directory")
+            if self.debug: print(f"[DEBUG] Removed existing eonsim_results directory")
             
     def setup_eonsim_config_directory(self):
         """Create and setup eonsim_config directory with required config files"""
         # Create eonsim_config directory if it doesn't exist
         if not os.path.exists(self.eonsim_config_dir):
             os.makedirs(self.eonsim_config_dir)
-            print(f"[DEBUG] Created eonsim_config directory: {self.eonsim_config_dir}")
+            if self.debug: print(f"[DEBUG] Created eonsim_config directory: {self.eonsim_config_dir}")
         
         # Remove existing dram_config and npumem_config if they exist
         dram_config_dest = os.path.join(self.eonsim_config_dir, "dram_config")
@@ -100,11 +101,11 @@ class MemoryModel:
         
         if os.path.exists(dram_config_dest):
             shutil.rmtree(dram_config_dest)
-            print(f"[DEBUG] Removed existing dram_config directory")
+            if self.debug: print(f"[DEBUG] Removed existing dram_config directory")
             
         if os.path.exists(npumem_config_dest):
             shutil.rmtree(npumem_config_dest)
-            print(f"[DEBUG] Removed existing npumem_config directory")
+            if self.debug: print(f"[DEBUG] Removed existing npumem_config directory")
         
         # Copy dram_config and npumem_config from mnpusim_config_path
         dram_config_src = os.path.join(self.mnpusim_config_path, "dram_config")
@@ -112,13 +113,13 @@ class MemoryModel:
         
         if os.path.exists(dram_config_src):
             shutil.copytree(dram_config_src, dram_config_dest)
-            print(f"[DEBUG] Copied dram_config from {dram_config_src} to {dram_config_dest}")
+            if self.debug: print(f"[DEBUG] Copied dram_config from {dram_config_src} to {dram_config_dest}")
         else:
             print(f"[WARNING] dram_config source directory not found: {dram_config_src}")
             
         if os.path.exists(npumem_config_src):
             shutil.copytree(npumem_config_src, npumem_config_dest)
-            print(f"[DEBUG] Copied npumem_config from {npumem_config_src} to {npumem_config_dest}")
+            if self.debug: print(f"[DEBUG] Copied npumem_config from {npumem_config_src} to {npumem_config_dest}")
         else:
             print(f"[WARNING] npumem_config source directory not found: {npumem_config_src}")
         
@@ -128,8 +129,8 @@ class MemoryModel:
         dram_config_path = os.path.join(self.eonsim_dir_name, self.offchip_memory_config)
         npumem_config_path = os.path.join(self.eonsim_dir_name, self.npumem_config)
         
-        print(f"[DEBUG] DRAM config path: {dram_config_path}")
-        print(f"[DEBUG] NPU memory config path: {npumem_config_path}")
+        if self.debug: print(f"[DEBUG] DRAM config path: {dram_config_path}")
+        if self.debug: print(f"[DEBUG] NPU memory config path: {npumem_config_path}")
         
         # Verify that the config files exist in the mNPUsim directory
         full_dram_config_path = os.path.join(self.mnpusim_path, dram_config_path)
@@ -138,12 +139,12 @@ class MemoryModel:
         if not os.path.exists(full_dram_config_path):
             print(f"[WARNING] DRAM config file not found: {full_dram_config_path}")
         else:
-            print(f"[DEBUG] DRAM config file verified: {full_dram_config_path}")
+            if self.debug: print(f"[DEBUG] DRAM config file verified: {full_dram_config_path}")
             
         if not os.path.exists(full_npumem_config_path):
             print(f"[WARNING] NPU memory config file not found: {full_npumem_config_path}")
         else:
-            print(f"[DEBUG] NPU memory config file verified: {full_npumem_config_path}")
+            if self.debug: print(f"[DEBUG] NPU memory config file verified: {full_npumem_config_path}")
         
         mnpusim_cmd = [
             self.mnpusim_path + "/mnpusim",
@@ -165,8 +166,8 @@ class MemoryModel:
             env['LD_LIBRARY_PATH'] = dramsim3_path
         
         try:
-            print("[DEBUG] Executing mnpusim...")
-            print(f"[DEBUG] LD_LIBRARY_PATH: {env['LD_LIBRARY_PATH']}")
+            if self.debug: print("[DEBUG] Executing mnpusim...")
+            if self.debug: print(f"[DEBUG] LD_LIBRARY_PATH: {env['LD_LIBRARY_PATH']}")
             result = subprocess.run(mnpusim_cmd, capture_output=True, text=True, check=True, env=env, cwd=self.mnpusim_path)
             
             # Save output to intermediate directory
@@ -177,7 +178,7 @@ class MemoryModel:
                 f.write("\nSTDERR:\n")
                 f.write(result.stderr)
             
-            print(f"[DEBUG] mnpusim execution completed. Output saved to {output_path}")
+            if self.debug: print(f"[DEBUG] mnpusim execution completed. Output saved to {output_path}")
             self.execution_successful = True
             
         except subprocess.CalledProcessError as e:
@@ -210,7 +211,7 @@ class MemoryModel:
         
         if os.path.exists(result_source_dir):
             shutil.copytree(result_source_dir, result_dest_dir)
-            print(f"[DEBUG] Copied result directory to {result_dest_dir}")
+            if self.debug: print(f"[DEBUG] Copied result directory to {result_dest_dir}")
             
             # Find and read execution_cycle file
             for filename in os.listdir(result_dest_dir):
@@ -219,7 +220,7 @@ class MemoryModel:
                     try:
                         with open(execution_cycle_file, 'r') as f:
                             self.offmem_cycles = int(f.readline().strip())
-                            print(f"[RESULT] mNPUsim cycles: {self.offmem_cycles}")
+                            if self.debug: print(f"[DEBUG] mNPUsim cycles: {self.offmem_cycles}")
                             break
                     except (ValueError, IOError) as e:
                         print(f"[ERROR] Failed to read execution cycles from {filename}: {e}")
@@ -239,17 +240,17 @@ class MemoryModel:
         """Remove the intermediate directory after simulation"""
         if os.path.exists(self.intermediate_dir):
             shutil.rmtree(self.intermediate_dir)
-            print(f"[DEBUG] Cleaned up intermediate directory: {self.intermediate_dir}")
+            if self.debug: print(f"[DEBUG] Cleaned up intermediate directory: {self.intermediate_dir}")
             
     def cleanup_eonsim_results_directory(self):
         """Remove the eonsim_results directory after simulation"""
         if os.path.exists(self.eonsim_results_dir):
             shutil.rmtree(self.eonsim_results_dir)
-            print(f"[DEBUG] Cleaned up eonsim_results directory: {self.eonsim_results_dir}")
+            if self.debug: print(f"[DEBUG] Cleaned up eonsim_results directory: {self.eonsim_results_dir}")
             
     def do_memory_simulation(self):
         """Main method to run the complete memory simulation pipeline"""
-        print("[DEBUG] Starting off-chip memory simulation...")
+        if self.debug: print("[DEBUG] Starting off-chip memory simulation...")
         
         # Setup and cleanup
         self.setup_intermediate_directory()

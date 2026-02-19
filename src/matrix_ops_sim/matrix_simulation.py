@@ -1,6 +1,6 @@
 "Python 3.10.8"
 import argparse
-import matrix_ops_setup
+from . import matrix_ops_setup
 import time
 
 def run_matrix_simulation(topology_path, configuration_path, mnk_flag="gemm", output_dir=None, output_filename=None, debug=False):

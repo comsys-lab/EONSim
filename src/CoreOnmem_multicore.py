@@ -64,7 +64,7 @@ class CoreAccessIterator:
 
 
 class CoreOnmem:
-    def __init__(self, mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table=0, mem_gran=0, prof_multiplier=1, mem_latency=1, num_cores=1):
+    def __init__(self, mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table=0, mem_gran=0, prof_multiplier=1, mem_latency=1, num_cores=1, debug=False):
         self.mem_size = 0
         self.mem_type = "init"
         self.mem_policy = "init"
@@ -93,6 +93,7 @@ class CoreOnmem:
         
         # Multicore configuration
         self.num_cores = num_cores
+        self.debug = debug
         self.core_access_results = [[] for _ in range(num_cores)]
         
         self.set_params(mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table, mem_gran, prof_multiplier, mem_latency)
@@ -125,7 +126,7 @@ class CoreOnmem:
             self.vectors_per_table = vectors_per_table
 
         self.offmem_trace = [[np.full_like(self.emb_dataset[nb][nt], -1) for nt in range(len(self.emb_dataset[nb]))] for nb in range(len(self.emb_dataset))]
-        print("[DEBUG] self.offmem_trace shape: ({}, {}, {})".format(len(self.offmem_trace), len(self.offmem_trace[0]), len(self.offmem_trace[0][0])))
+        if self.debug: print("[DEBUG] self.offmem_trace shape: ({}, {}, {})".format(len(self.offmem_trace), len(self.offmem_trace[0]), len(self.offmem_trace[0][0])))
     
     def _partition_tables_across_cores(self):
         """Partition embedding tables across multiple cores"""
@@ -163,7 +164,7 @@ class CoreOnmem:
         elif self.mem_type == "spad":
             if not policy.startswith("spad_"):
                 assert False, f"Invalid policy: '{policy}' for mem_type: '{self.mem_type}'"
-            self.policy = SpadPolicy(self.mem_size, self.mem_gran, self.emb_dim, self.n_format_byte, self.emb_dataset, self.vectors_per_table, self.prof_multiplier, self.mem_policy, self.num_cores)
+            self.policy = SpadPolicy(self.mem_size, self.mem_gran, self.emb_dim, self.n_format_byte, self.emb_dataset, self.vectors_per_table, self.prof_multiplier, self.mem_policy, self.num_cores, debug=self.debug)
 
         self.policy.initialize()
         self.on_mem = self.policy.on_mem
@@ -207,106 +208,111 @@ class CoreOnmem:
 
     def do_simulation(self):
         self.print_sim()
-        print(f"Running with {self.num_cores} core(s)")
-        
+        if self.debug: print(f"[DEBUG] Running with {self.num_cores} core(s)")
+
         # Partition tables across cores
         table_ranges = self._partition_tables_across_cores()
         for core_id in range(self.num_cores):
             table_start, table_end = table_ranges[core_id]
-            print(f"[Core {core_id}] Tables {table_start}-{table_end-1}")
-        
-        # Create access iterator for each core
-        core_iterators = []
-        for core_id in range(self.num_cores):
-            table_start, table_end = table_ranges[core_id]
-            iterator = CoreAccessIterator(
-                self.emb_dataset,
-                table_start,
-                table_end,
-                self.offmem_trace
-            )
-            core_iterators.append(iterator)
-        
-        # Initialize per-core statistics
-        core_batch_stats = [[0, 0] for _ in range(self.num_cores)]
-        total_accesses = sum(it.total_accesses for it in core_iterators)
-        
-        if self.mem_type == 'spad':
-            # SPad: static allocation, no inter-core contention
-            # Process each core independently with vectorized operations
-            if isinstance(self.on_mem, set):
-                on_mem_array = np.array(list(self.on_mem), dtype=np.int64)
-            else:
-                on_mem_array = self.on_mem
-            
-            with tqdm(total=len(self.emb_dataset) * self.num_cores, desc="Simulation") as pbar:
-                for core_id in range(self.num_cores):
-                    table_start, table_end = table_ranges[core_id]
-                    
-                    for nb in range(len(self.emb_dataset)):
+            if self.debug: print(f"[DEBUG] [Core {core_id}] Tables {table_start}-{table_end-1}")
+
+        for nb in range(len(self.emb_dataset)):
+            print(f"Processing batch {nb}...")
+
+            batch_hit = 0
+            batch_miss = 0
+            core_batch_stats = [[0, 0] for _ in range(self.num_cores)]
+
+            if self.mem_type == 'spad':
+                # SPad: static allocation, process all cores for this batch
+                if isinstance(self.on_mem, set):
+                    on_mem_array = np.array(list(self.on_mem), dtype=np.int64)
+                else:
+                    on_mem_array = self.on_mem
+
+                with tqdm(total=len(self.emb_dataset[nb]), desc=f"Batch {nb}") as pbar:
+                    for core_id in range(self.num_cores):
+                        table_start, table_end = table_ranges[core_id]
                         for nt in range(table_start, table_end):
                             hit_mask = np.isin(self.emb_dataset[nb][nt], on_mem_array)
-                            
+
                             num_hit = np.sum(hit_mask)
                             num_miss = np.sum(~hit_mask)
-                            
+
+                            batch_hit += num_hit
+                            batch_miss += num_miss
                             core_batch_stats[core_id][0] += num_hit
                             core_batch_stats[core_id][1] += num_miss
-                            
+
                             miss_mask = ~hit_mask
                             self.offmem_trace[nb][nt][miss_mask] = self.emb_dataset[nb][nt][miss_mask]
-                        
-                        pbar.update(1)
-        
-        elif self.mem_type == 'cache':
-            # Cache: shared state, round-robin needed for inter-core contention
-            tick = 0
-            active_cores = [True] * self.num_cores
-            
-            with tqdm(total=total_accesses, desc="Simulation") as pbar:
-                while any(active_cores):
-                    core_id = tick % self.num_cores
-                    
-                    if active_cores[core_id] and core_iterators[core_id].has_next():
-                        batch_id, table_id, vec_id, addr = core_iterators[core_id].get_next()
-                        
-                        tag = self.get_tag_bits(addr)
-                        index = self.get_index_bits(addr)
-                        
-                        hit, victim = self.policy.handle_access(tag, index)
-                        
-                        if hit:
-                            core_batch_stats[core_id][0] += 1
-                        else:
-                            core_batch_stats[core_id][1] += 1
-                            self.offmem_trace[batch_id][table_id][vec_id] = addr
-                        
-                        self.policy.post_access_processing(hit, tag, index, vec_id)
-                        pbar.update(1)
-                        
-                        if not core_iterators[core_id].has_next():
-                            active_cores[core_id] = False
-                    
-                    tick += 1
-        
-        # Aggregate results
-        for core_id in range(self.num_cores):
-            self.core_access_results[core_id].append(core_batch_stats[core_id])
-        
-        total_hits = sum(stats[0] for stats in core_batch_stats)
-        total_miss = sum(stats[1] for stats in core_batch_stats)
-        self.access_results.append([total_hits, total_miss])
-        
+                            pbar.update(1)
+
+                # Update on_mem for oracle policy after each batch
+                if self.mem_policy == "spad_oracle":
+                    self.batch_counter = min(self.batch_counter + 1, len(self.emb_dataset) - 1)
+                    self.policy.batch_counter = self.batch_counter
+                    if self.batch_counter % self.prof_multiplier == 0:
+                        self.on_mem = self.policy.set_spad()
+
+            elif self.mem_type == 'cache':
+                # Cache: create per-batch iterators (single batch wrapped in list)
+                # batch_id returned by get_next() is always 0 (index into single-batch list)
+                single_batch = [self.emb_dataset[nb]]
+                core_iterators = []
+                for core_id in range(self.num_cores):
+                    table_start, table_end = table_ranges[core_id]
+                    core_iterators.append(CoreAccessIterator(
+                        single_batch, table_start, table_end, None
+                    ))
+
+                total_accesses = sum(it.total_accesses for it in core_iterators)
+                tick = 0
+                active_cores = [True] * self.num_cores
+
+                with tqdm(total=total_accesses, desc=f"Batch {nb}") as pbar:
+                    while any(active_cores):
+                        core_id = tick % self.num_cores
+
+                        if active_cores[core_id] and core_iterators[core_id].has_next():
+                            _, table_id, vec_id, addr = core_iterators[core_id].get_next()
+
+                            tag = self.get_tag_bits(addr)
+                            index = self.get_index_bits(addr)
+
+                            hit, victim = self.policy.handle_access(tag, index)
+
+                            if hit:
+                                batch_hit += 1
+                                core_batch_stats[core_id][0] += 1
+                            else:
+                                batch_miss += 1
+                                core_batch_stats[core_id][1] += 1
+                                self.offmem_trace[nb][table_id][vec_id] = addr
+
+                            self.policy.post_access_processing(hit, tag, index, vec_id)
+                            pbar.update(1)
+
+                            if not core_iterators[core_id].has_next():
+                                active_cores[core_id] = False
+
+                        tick += 1
+
+            self.access_results.append([batch_hit, batch_miss])
+            for core_id in range(self.num_cores):  # kept for potential future use
+                self.core_access_results[core_id].append(core_batch_stats[core_id])
+
         # Verify offmem_trace integrity
+        total_miss = sum(r[1] for r in self.access_results)
         offmem_count = 0
         for nb in range(len(self.offmem_trace)):
             for nt in range(len(self.offmem_trace[nb])):
                 offmem_count += np.sum(self.offmem_trace[nb][nt] != -1)
-        
-        print(f"[DEBUG] Total misses: {total_miss}, Offmem trace entries: {offmem_count}")
+
+        if self.debug: print(f"[DEBUG] Total misses: {total_miss}, Offmem trace entries: {offmem_count}")
         if offmem_count != total_miss:
             print(f"[WARNING] Mismatch between miss count and offmem_trace entries!")
-        
+
         print("Simulation Done")
         self.print_stats()
         
@@ -314,8 +320,8 @@ class CoreOnmem:
         total_hits = 0
         total_miss = 0
         for i in range(len(self.access_results)):
-            total_hits = total_hits + self.access_results[i][0]
-            total_miss = total_miss + self.access_results[i][1]
+            total_hits += self.access_results[i][0]
+            total_miss += self.access_results[i][1]
         total_hit_ratio = total_hits / (total_hits + total_miss)
         
         content = [
@@ -324,19 +330,28 @@ class CoreOnmem:
             f"Total hits: {total_hits}",
             f"Total misses: {total_miss}",
             "----------------------------------------",
-            "Per-Core Statistics:"
+            "Per batch results"
         ]
         
-        # Per-core statistics
-        for core_id in range(self.num_cores):
-            core_hits = sum(batch[0] for batch in self.core_access_results[core_id])
-            core_miss = sum(batch[1] for batch in self.core_access_results[core_id])
-            core_total = core_hits + core_miss
-            core_hit_ratio = core_hits / core_total if core_total > 0 else 0
-            
+        for i in range(len(self.access_results)):
+            batch_hit_ratio = self.access_results[i][0] / (self.access_results[i][0] + self.access_results[i][1])
             content.append(
-                f"[Core {core_id}] Hit ratio: {core_hit_ratio:.4f}   "
-                f"Accesses: {core_total}   Hits: {core_hits}   Misses: {core_miss}"
+                f"[Batch {i}] hit ratio: {batch_hit_ratio:.4f}   "
+                f"accesses: {self.access_results[i][0]+self.access_results[i][1]}   "
+                f"hits: {self.access_results[i][0]}   misses: {self.access_results[i][1]}"
             )
+        
+        # Per-core statistics
+        # content.append("----------------------------------------")
+        # content.append("Per-Core Statistics:")
+        # for core_id in range(self.num_cores):
+        #     core_hits = sum(batch[0] for batch in self.core_access_results[core_id])
+        #     core_miss = sum(batch[1] for batch in self.core_access_results[core_id])
+        #     core_total = core_hits + core_miss
+        #     core_hit_ratio = core_hits / core_total if core_total > 0 else 0
+        #     content.append(
+        #         f"[Core {core_id}] Hit ratio: {core_hit_ratio:.4f}   "
+        #         f"Accesses: {core_total}   Hits: {core_hits}   Misses: {core_miss}"
+        #     )
         
         print_styled_box("Simulation Results", content)

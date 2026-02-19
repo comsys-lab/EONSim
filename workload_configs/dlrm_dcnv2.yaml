@@ -5,5 +5,5 @@ num_format: 32  # FP32 assumed
 embedding_layer:
   embedding_dim: 128
   vectors_per_table: 500000
-  num_tables: 60
+  num_tables: 30
   pooling_factor: 120

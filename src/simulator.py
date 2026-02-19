@@ -7,7 +7,7 @@ from EnergyEstimator import EnergyEstimator
 from RuntimeModel import RuntimeModel
 from MemoryModel import MemoryModel
 from ConfigLoader import ConfigLoader
-from matrix_simulation import run_matrix_simulation
+from matrix_ops_sim.matrix_simulation import run_matrix_simulation
 import argparse
 import sys
 import numpy as np
@@ -65,12 +65,16 @@ if __name__ == "__main__":
     # mNPUsim related parameters
     parser.add_argument("--offchip-memory-config", type=str, default="dram_config/total_dram_config/single_hbm3_819gbs.cfg")
     parser.add_argument("--npumem-config", type=str, default="npumem_config/npumem_architecture_list/single.txt")
-    
+
+    # debug flag
+    parser.add_argument("--debug", action="store_true", default=False, help="Enable debug prints")
+
     # argparses
     args = parser.parse_args()
+    debug = args.debug
 
     # Load workload config
-    print(f"[DEBUG] Loading workload config from base path: {args.workload_config}")
+    if debug: print(f"[DEBUG] Loading workload config from base path: {args.workload_config}")
     cfg_loader = ConfigLoader(args.workload_config)
     
     # Extract parameters from ConfigLoader
@@ -93,8 +97,8 @@ if __name__ == "__main__":
     
     workload_type = gen_conf['workload_type']
     
-    print(f"[DEBUG] Matrix Ops CSV Config Path: {matrix_ops_csv_path}")
-    print(f"[DEBUG] Generated Embedding Size String: {embsize[:50]}...")
+    if debug: print(f"[DEBUG] Matrix Ops CSV Config Path: {matrix_ops_csv_path}")
+    if debug: print(f"[DEBUG] Generated Embedding Size String: {embsize[:50]}...")
 
     mem_config_file = args.memory_config
     n_format_bits = args.numeric_format_bits
@@ -109,7 +113,7 @@ if __name__ == "__main__":
     
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-        print(f"[DEBUG] Created output directory: {output_dir}")
+        if debug: print(f"[DEBUG] Created output directory: {output_dir}")
 
     # Write output_dir to a temp file for the shell script to move the log file
     with open(".last_output_dir", "w") as f:
@@ -119,13 +123,13 @@ if __name__ == "__main__":
     
     # Script dir setup
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    print(f"[DEBUG] script_dir: {script_dir}")
+    if debug: print(f"[DEBUG] script_dir: {script_dir}")
     
     # mNPUsim related configurations
     offchip_memory_config = args.offchip_memory_config
     npumem_config = args.npumem_config
     mnpusim_path = os.path.join(os.path.dirname(script_dir), 'tools', 'mNPUsim')
-    print(f"[DEBUG] mnpusim_path: {mnpusim_path}")
+    if debug: print(f"[DEBUG] mnpusim_path: {mnpusim_path}")
     
     # Set up config paths
     config_path = os.path.join(os.path.dirname(script_dir), 'configs', f'{mem_config_file}.yaml')
@@ -134,9 +138,9 @@ if __name__ == "__main__":
     # Matrix config path construction
     matrix_config_path = os.path.join(os.path.dirname(script_dir), 'configs', 'scalesim_config', args.matrix_config)
     
-    print(f"[DEBUG] memory_config_path: {config_path}")
-    print(f"[DEBUG] mnpusim_config_path: {mnpusim_config_path}")
-    print(f"[DEBUG] matrix_config_path: {matrix_config_path}")
+    if debug: print(f"[DEBUG] memory_config_path: {config_path}")
+    if debug: print(f"[DEBUG] mnpusim_config_path: {mnpusim_config_path}")
+    if debug: print(f"[DEBUG] matrix_config_path: {matrix_config_path}")
     
     # Load memory configuration using ConfigLoader
     mem_config = ConfigLoader.load_memory_config(config_path)
@@ -176,11 +180,11 @@ if __name__ == "__main__":
     num_mxus = matrix_unit['num_mxus']
     
     # Print the parsed configuration for debugging
-    print(f"[DEBUG] Core Dimension - Row: {core_row}, Col: {core_col}")
-    print(f"[DEBUG] Vector Unit - Lanes: {vector_lanes}, Sublanes: {vector_sublanes}, ALUs per sublanes: {vector_alus_per_sublanes}")
-    print(f"[DEBUG] Matrix Unit - MXU dimension: {mxu_dimension}, Number of MXUs: {num_mxus}")
-    print(f"[DEBUG] Local Buffer - Type: {mem_type}, Size: {mem_size} KB, Policy: {mem_policy}, Latency: {mem_latency} cycles")
-    if global_mem_size > 0:
+    if debug: print(f"[DEBUG] Core Dimension - Row: {core_row}, Col: {core_col}")
+    if debug: print(f"[DEBUG] Vector Unit - Lanes: {vector_lanes}, Sublanes: {vector_sublanes}, ALUs per sublanes: {vector_alus_per_sublanes}")
+    if debug: print(f"[DEBUG] Matrix Unit - MXU dimension: {mxu_dimension}, Number of MXUs: {num_mxus}")
+    if debug: print(f"[DEBUG] Local Buffer - Type: {mem_type}, Size: {mem_size} KB, Policy: {mem_policy}, Latency: {mem_latency} cycles")
+    if debug and global_mem_size > 0:
         print(f"[DEBUG] Global Buffer - Type: {global_mem_type}, Size: {global_mem_size} KB, Policy: {global_mem_policy}, Latency: {global_mem_latency} cycles")
 
     # these are for convenience...
@@ -199,7 +203,7 @@ if __name__ == "__main__":
 
     helper.set_timer()
         
-    reqgen = ReqGenerator(nbatches, n_format_byte, embsize, emb_dim, bsz, fname, num_indices_per_lookup, mem_gran)
+    reqgen = ReqGenerator(nbatches, n_format_byte, embsize, emb_dim, bsz, fname, num_indices_per_lookup, mem_gran, debug=debug)
     reqgen.data_gen()
     
     print_general_config(reqgen.nbatches, reqgen.n_format_byte, reqgen.bsz, reqgen.embsize, reqgen.emb_dim, reqgen.num_indices_per_lookup, reqgen.fname)
@@ -227,7 +231,7 @@ if __name__ == "__main__":
     helper.set_timer()    
     
     # Create core on-memory object with the parsed configuration parameters
-    core_onmem_obj = CoreOnmem(mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table=vectors_per_table, mem_gran=mem_gran, prof_multiplier=prof_multiplier, mem_latency=mem_latency, num_cores=num_cores)
+    core_onmem_obj = CoreOnmem(mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table=vectors_per_table, mem_gran=mem_gran, prof_multiplier=prof_multiplier, mem_latency=mem_latency, num_cores=num_cores, debug=debug)
     core_onmem_obj.set_policy(mem_policy)
     core_onmem_obj.print_config()
     # print("on mem data structure size: {:.2f} KB".format(sys.getsizeof(core_onmem_obj.on_mem)/1024))
@@ -251,7 +255,7 @@ if __name__ == "__main__":
     ####################################################
     
     helper.set_timer()
-    memory_model = MemoryModel(script_dir, core_onmem_obj.offmem_trace, mnpusim_path, mnpusim_config_path, offchip_memory_config, npumem_config)
+    memory_model = MemoryModel(script_dir, core_onmem_obj.offmem_trace, mnpusim_path, mnpusim_config_path, offchip_memory_config, npumem_config, debug=debug)
     memory_model.do_memory_simulation()
     helper.end_timer("off-chip memory simulation")
     
@@ -311,7 +315,7 @@ if __name__ == "__main__":
             mnk_flag="gemm", 
             output_dir=output_dir, 
             output_filename=args.output_filename,
-            debug=False
+            debug=debug
         )
         helper.end_timer("matrix operations simulation")
     else:

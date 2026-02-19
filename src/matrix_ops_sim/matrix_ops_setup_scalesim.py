@@ -1,7 +1,7 @@
 import csv
 import numpy as np
 import os
-from matrix_single_core_sim import scale_up_runtime, scale_up_buf_access, scale_up_off_access
+from .matrix_single_core_sim import scale_up_runtime, scale_up_buf_access, scale_up_off_access
 
 class accelerator:
     def __init__(self, topology_path, configuration_path, mnk_flag, output_dir=None, output_filename=None):

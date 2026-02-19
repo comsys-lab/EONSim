@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if [ "$#" -lt 1 ]; then
+    echo "Usage: $0 <memory_config>"
+    exit 1
+fi
+
 ### outdir ### 
 OUT="results"
 mkdir -p $OUT
@@ -7,7 +12,6 @@ mkdir -p $OUT
 
 ### workload & dataset ###
 workload_path_dir="$(pwd)/workload_configs/"
-# workload="dlrm_rmc2_small"
 workload="dlrm_dcnv2"
 WORKLOAD_CONFIG="${workload_path_dir}${workload}"
 
@@ -22,7 +26,7 @@ MATRIX_CFG="tpuv6e.cfg"
 NUM_BATCH=1
 BS=256
 
-# Set PROF_MULTIPLIER to $2 if provided, otherwise default to 1
+# Set PROF_MULTIPLIER to $2 if provided, otherwise default to 1 (this is only used in spad_oracle config)
 PROF_MULTIPLIER=${2:-1}
 ##############################
 

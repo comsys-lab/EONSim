@@ -46,7 +46,7 @@ def _process_batch_worker(args):
     return batch_addr_trace
 
 class ReqGenerator:
-    def __init__(self, nbatches, n_format_byte, embsize, emb_dim, bsz, fname, num_indices_per_lookup, mem_gran):
+    def __init__(self, nbatches, n_format_byte, embsize, emb_dim, bsz, fname, num_indices_per_lookup, mem_gran, debug=False):
         self.dataset_gen = None
         # sparse feature (sparse indices)
         self.lS_emb_offsets = []
@@ -64,7 +64,8 @@ class ReqGenerator:
         self.num_indices_per_lookup = 0
         
         self.mem_gran = 0
-        
+        self.debug = debug
+
         self.set_params(nbatches, n_format_byte, embsize, emb_dim, bsz, fname, num_indices_per_lookup, mem_gran)
         
     def set_params(self, nbatches, n_format_byte, embsize, emb_dim, bsz, fname, num_indices_per_lookup, mem_gran):
@@ -136,8 +137,8 @@ class ReqGenerator:
              for _ in range(len(self.lS_i[0]))] 
             for _ in range(self.nbatches)
         ]
-        print("[DEBUG] lS_i shape: {}".format(np.array(self.lS_i).shape))
-        print("[DEBUG] addr_trace shape: {}".format(np.array(self.addr_trace).shape))
+        if self.debug: print("[DEBUG] lS_i shape: {}".format(np.array(self.lS_i).shape))
+        if self.debug: print("[DEBUG] addr_trace shape: {}".format(np.array(self.addr_trace).shape))
         
         # convert indices in self.lS_i to memory address...
         ln_emb = np.fromstring(self.embsize, dtype=int, sep="-")

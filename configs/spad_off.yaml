@@ -1,6 +1,6 @@
 core_dim:
-  row: 2
-  col: 2
+  row: 1
+  col: 1
 
 vector_unit:
   lanes: 128

@@ -1,7 +1,7 @@
 from collections import Counter
 import numpy as np
-from LRU_module import LRU_module
-from SRRIP_module import SRRIP_module
+from cache_modules.LRU_module import LRU_module
+from cache_modules.SRRIP_module import SRRIP_module
 import itertools
 from collections import Counter
 from tqdm import tqdm
@@ -213,7 +213,7 @@ class ProfilePolicy(LRUPolicy):
         self.profile_filter = self.create_profile_filter()
 
 class SpadPolicy(CachePolicy):
-    def __init__(self, mem_size, mem_gran, emb_dim, n_format_byte, emb_dataset, vectors_per_table, prof_multiplier, spad_policy, num_cores=1):
+    def __init__(self, mem_size, mem_gran, emb_dim, n_format_byte, emb_dataset, vectors_per_table, prof_multiplier, spad_policy, num_cores=1, debug=False):
         self.mem_size = mem_size
         self.mem_gran = mem_gran
         self.emb_dim = emb_dim
@@ -223,6 +223,7 @@ class SpadPolicy(CachePolicy):
         self.prof_multiplier = prof_multiplier
         self.spad_policy = spad_policy
         self.num_cores = num_cores
+        self.debug = debug
         self.num_tables = len(self.emb_dataset[0])
         self.access_per_vector = np.ceil(self.emb_dim * self.n_format_byte / self.mem_gran).astype(np.int32)
         self.spad_size = np.floor(self.mem_size / self.mem_gran).astype(np.int32)
@@ -263,7 +264,7 @@ class SpadPolicy(CachePolicy):
                 extra = 1 if core_id < remainder else 0
                 table_end = start_idx + tables_per_core + extra
                 
-                print(f"[DEBUG] Core {core_id}: tables {start_idx}-{table_end-1}, allocating {vectors_per_core} memory accesses")
+                if self.debug: print(f"[DEBUG] Core {core_id}: tables {start_idx}-{table_end-1}, allocating {vectors_per_core} memory accesses")
                 
                 # Allocate vectors_per_core for this core from its assigned tables
                 core_counter = 0
@@ -291,7 +292,7 @@ class SpadPolicy(CachePolicy):
                 # Move to next core's table range
                 start_idx = table_end
         
-        print(f"[DEBUG] Total loaded to spad: {len(on_mem_set)} addresses")
+        if self.debug: print(f"[DEBUG] Total loaded to spad: {len(on_mem_set)} addresses")
         return set(on_mem_set)
 
     def set_spad_random(self):

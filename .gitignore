@@ -46,3 +46,4 @@ datasets/vectordb/trivia_seq_100m.txt
 
 ### temp
 MULTICORE_IMPLEMENTATION.md
+tools/mNPUsim/mnpusim

@@ -4,12 +4,11 @@ import torch
 import itertools
 import random
 from collections import OrderedDict, Counter
-from LRU_module import LRU_module
+from cache_modules.LRU_module import LRU_module
 from tqdm import tqdm
 from Helper import print_styled_header, print_styled_box
 from itertools import chain
-# from srrip_cache import SRRIPCache
-from SRRIP_module import SRRIP_module  # Add Python-based SRRIP implementation
+from cache_modules.SRRIP_module import SRRIP_module  # Add Python-based SRRIP implementation
 
 class MemProfile:
     def __init__(self, mem_size, mem_type, cache_config, emb_dim, emb_dataset, vectors_per_table, mem_gran, n_format_byte, profiled_path, prof_multiplier=1):
