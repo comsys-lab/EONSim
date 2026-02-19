@@ -40,10 +40,11 @@ if [ "$(docker ps -a -q -f name=$NAME_CONTAINER)" ]; then
     fi
 else
     echo "Container '$NAME_CONTAINER' does not exist. Running a new container..."
+    mount_dir="$(pwd)/..:/workspace"
     docker run \
         -e TERM=xterm-256color -e COLORTERM=truecolor -e FORCE_COLOR=true \
         --name $NAME_CONTAINER \
         --user $(id -u):$(id -g) \
-        --volume ../../EONSim:/workspace \
+        --volume $mount_dir \
         -it $NAME_IMAGE
 fi
