@@ -3,7 +3,6 @@ import numpy as np
 from cache_modules.LRU_module import LRU_module
 from cache_modules.SRRIP_module import SRRIP_module
 import itertools
-from collections import Counter
 from tqdm import tqdm
 import random
 
@@ -188,29 +187,6 @@ class OptPolicy(CachePolicy):
 
     def post_access_processing(self, hit, tag, index, vec):
         self.curr_cycle += 1
-
-class ProfilePolicy(LRUPolicy):
-    def __init__(self, cache_config, emb_dataset, batch_counter):
-        super().__init__(cache_config)
-        self.emb_dataset = emb_dataset
-        self.batch_counter = batch_counter
-        self.profile_filter = self.create_profile_filter()
-
-    def create_profile_filter(self):
-        flat_dataset = itertools.chain.from_iterable(self.emb_dataset[self.batch_counter])
-        access_freq = Counter(flat_dataset)
-        access_freq = access_freq.most_common()
-        new_access_freq = [(key, value) for key, value in access_freq if value >= 3]
-        return np.array([x[0] for x in new_access_freq], dtype=np.int64)
-
-    def handle_access(self, tag, index):
-        if not tag in self.profile_filter:
-            return False, None  # Miss due to profile filter
-        return super().handle_access(tag, index)
-
-    def post_access_processing(self, hit, tag, index, vec):
-        self.batch_counter = min(self.batch_counter + 1, len(self.emb_dataset) - 1)
-        self.profile_filter = self.create_profile_filter()
 
 class SpadPolicy(CachePolicy):
     def __init__(self, mem_size, mem_gran, emb_dim, n_format_byte, emb_dataset, vectors_per_table, prof_multiplier, spad_policy, num_cores=1, debug=False):

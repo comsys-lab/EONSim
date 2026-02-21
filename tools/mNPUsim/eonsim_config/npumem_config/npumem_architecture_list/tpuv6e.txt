@@ -1,0 +1,1 @@
+eonsim_config/npumem_config/npumem_architecture/tpuv6e.cfg

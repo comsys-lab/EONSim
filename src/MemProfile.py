@@ -6,7 +6,7 @@ import random
 from collections import OrderedDict, Counter
 from cache_modules.LRU_module import LRU_module
 from tqdm import tqdm
-from Helper import print_styled_header, print_styled_box
+from helper_modules.Helper import print_styled_header, print_styled_box
 from itertools import chain
 from cache_modules.SRRIP_module import SRRIP_module  # Add Python-based SRRIP implementation
 

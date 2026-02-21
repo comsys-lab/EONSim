@@ -5,9 +5,9 @@ if [ "$#" -lt 1 ]; then
     exit 1
 fi
 
-### outdir ### 
+### outdir ###
 OUT="results"
-mkdir -p $OUT
+mkdir -p "$OUT"
 ##############
 
 ### workload & dataset ###
@@ -30,15 +30,6 @@ BS=256
 PROF_MULTIPLIER=${2:-1}
 ##############################
 
-### others ###
-WORKLOAD_NAME=$workload
-# Generate random number for unique temporary directory
-RAND_NUM=$(python3 -c "import random; print(random.randint(1, 100000000))")
-OUTDIR="${OUT}/${WORKLOAD_NAME}_${NUM_BATCH}_${BS}_${RAND_NUM}"
-echo "Output Directory for Logs: $OUTDIR"
-mkdir -p $OUTDIR
-##############
-
 for dataset in "${dataset_list[@]}"; do
     DATA_GEN_PATH=$data_path_dir$dataset
     
@@ -46,8 +37,17 @@ for dataset in "${dataset_list[@]}"; do
     DATASET_STR=$(echo "$dataset" | sed 's/\//_/g')
     OUTPUT_FILENAME="${DATASET_STR}_${MEM_CFG}_${NUM_BATCH}batch"
     
+    # Resolve target output directory before running simulator.
+    TARGET_DIR=$(python3 src/helper_modules/Helper.py \
+        --resolve-output-dir \
+        --workload-config "$WORKLOAD_CONFIG" \
+        --output-base-dir "$OUT" \
+        --batch-size "$BS")
+
+    mkdir -p "$TARGET_DIR"
+
     # Log file path
-    LOGFILE="$OUTDIR/$OUTPUT_FILENAME.log"
+    LOGFILE="$TARGET_DIR/$OUTPUT_FILENAME.log"
     
     echo "Running simulation for dataset: $dataset with config base: $WORKLOAD_CONFIG"
     
@@ -61,22 +61,4 @@ for dataset in "${dataset_list[@]}"; do
         --profiling-multiplier $PROF_MULTIPLIER \
         --output-filename $OUTPUT_FILENAME \
         | tee $LOGFILE
-        
-    # Move log file to the output directory determined by python script
-    if [ -f .last_output_dir ]; then
-        TARGET_DIR=$(cat .last_output_dir)
-        if [ -d "$TARGET_DIR" ]; then
-            echo "Moving log file to $TARGET_DIR"
-            mv $LOGFILE $TARGET_DIR/
-        fi
-        rm .last_output_dir
-    fi
 done
-
-# Remove the temporary output directory if it is empty
-if [ -d "$OUTDIR" ]; then
-    if [ -z "$(ls -A $OUTDIR)" ]; then
-        rmdir $OUTDIR
-        echo "Removed empty temporary directory: $OUTDIR"
-    fi
-fi

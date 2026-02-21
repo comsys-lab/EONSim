@@ -44,39 +44,14 @@ RUN wget https://www.python.org/ftp/python/3.12.3/Python-3.12.3.tgz \
     && rm -rf Python-3.12.3 Python-3.12.3.tgz
 
 # Upgrade pip
-RUN python3 -m pip install --upgrade pip
+RUN python3 -m pip install --upgrade pip setuptools wheel
 
-# Install required Python packages
-RUN pip3 install \
-    numpy \
-    pandas \
-    matplotlib \
-    seaborn \
-    tqdm \
-    h5py \
-    faiss-cpu \
-    wikipedia-api \
-    sentence-transformers \
-    transformers \
-    datasets \
-    torch \
-    huggingface-hub \    
-    pybind11 \
-    # Additional libraries for Working set
-    scikit-learn \
-    scipy \
-    plotly \
-    ipykernel \
-    jupyter \
-    pytest \
-    pytest-cov \
-    black \
-    flake8 \
-    mypy \
-    isort
-
-RUN pip3 install \
-    colorama
+# Install minimal required Python packages (pinned for reproducibility)
+RUN pip3 install --no-cache-dir \
+    numpy==1.26.0 \
+    PyYAML==6.0.2 \
+    tqdm==4.66.5 \
+    colorama==0.4.6
 
 # Change ownership of necessary directories to the new user
 RUN mkdir -p /workspace && chown -R ${USERNAME}:${USERNAME} /workspace

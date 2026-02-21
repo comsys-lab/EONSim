@@ -1,9 +1,7 @@
 import numpy as np
-import time
-import torch
+import argparse
 from tqdm import tqdm
 import multiprocessing as mp
-from functools import partial
 
 ## We implement this module based on this code: https://github.com/rishucoding/reproduce_MICRO24_GPU_DLRM_inference by RJ
 

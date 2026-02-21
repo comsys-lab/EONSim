@@ -1,12 +1,7 @@
 import numpy as np
-import time
-import torch
-import itertools
-import random
-from collections import OrderedDict, Counter
 from tqdm import tqdm
-from Helper import print_styled_header, print_styled_box
-from policies import LRUPolicy, SRRIPPolicy, OptPolicy, ProfilePolicy, SpadPolicy
+from helper_modules.Helper import print_styled_header, print_styled_box
+from policies import LRUPolicy, SRRIPPolicy, OptPolicy, SpadPolicy
 
 class CoreAccessIterator:
     """Iterator for a core's memory accesses in table-partitioned multicore simulation"""
@@ -157,8 +152,6 @@ class CoreOnmem:
                 self.policy = SRRIPPolicy(cache_config)
             elif self.mem_policy == "cache_OPT":
                 self.policy = OptPolicy(cache_config, self.emb_dataset, self.num_cores)
-            elif self.mem_policy == "cache_profile":
-                self.policy = ProfilePolicy(cache_config, self.emb_dataset, self.batch_counter)
             else:
                 raise NotImplementedError(f"Policy {self.mem_policy} not implemented")
         elif self.mem_type == "spad":

@@ -2,7 +2,7 @@ import os
 import subprocess
 import shutil
 import random
-from Helper import print_styled_box
+from helper_modules.Helper import print_styled_box
 
 class MemoryModel:
     def __init__(self, script_dir, offmem_trace, mnpusim_path, mnpusim_config_path, offchip_memory_config, npumem_config, debug=False):
@@ -125,12 +125,12 @@ class MemoryModel:
         
     def execute_mnpusim(self, trace_file_path):
         """Execute mNPUsim with proper environment setup"""
-        # Construct the full paths for config files
+        # Build runtime config paths relative to mNPUsim root.
         dram_config_path = os.path.join(self.eonsim_dir_name, self.offchip_memory_config)
         npumem_config_path = os.path.join(self.eonsim_dir_name, self.npumem_config)
         
-        if self.debug: print(f"[DEBUG] DRAM config path: {dram_config_path}")
-        if self.debug: print(f"[DEBUG] NPU memory config path: {npumem_config_path}")
+        if self.debug: print(f"[DEBUG] Using DRAM config: {dram_config_path}")
+        if self.debug: print(f"[DEBUG] Using NPU memory config: {npumem_config_path}")
         
         # Verify that the config files exist in the mNPUsim directory
         full_dram_config_path = os.path.join(self.mnpusim_path, dram_config_path)
@@ -150,8 +150,8 @@ class MemoryModel:
             self.mnpusim_path + "/mnpusim",
             "arch_config/core_architecture_list/tpu.txt",
             "network_config/netconfig_list/single/test1_network.txt",
-            "eonsim_config/dram_config/total_dram_config/single_hbm3_819gbs.cfg",
-            "eonsim_config/npumem_config/npumem_architecture_list/single.txt",
+            dram_config_path,
+            npumem_config_path,
             self.eonsim_results_dir_name,  # Use the dynamic directory name
             "misc_config/single.cfg",
             trace_file_path
@@ -168,6 +168,7 @@ class MemoryModel:
         try:
             if self.debug: print("[DEBUG] Executing mnpusim...")
             if self.debug: print(f"[DEBUG] LD_LIBRARY_PATH: {env['LD_LIBRARY_PATH']}")
+            if self.debug: print(f"[DEBUG] mnpusim command: {' '.join(mnpusim_cmd)}")
             result = subprocess.run(mnpusim_cmd, capture_output=True, text=True, check=True, env=env, cwd=self.mnpusim_path)
             
             # Save output to intermediate directory
@@ -249,6 +250,8 @@ class MemoryModel:
     def do_memory_simulation(self):
         """Main method to run the complete memory simulation pipeline"""
         if self.debug: print("[DEBUG] Starting off-chip memory simulation...")
+        if self.debug: print(f"[DEBUG] Requested off-chip DRAM config: {self.offchip_memory_config}")
+        if self.debug: print(f"[DEBUG] Requested NPU memory config: {self.npumem_config}")
         
         # Setup and cleanup
         self.setup_intermediate_directory()

@@ -1,6 +1,6 @@
 import yaml
 import numpy as np
-from Helper import print_styled_header, print_styled_box
+from helper_modules.Helper import print_styled_header, print_styled_box
 
 class DataTypeEnergy:
     def __init__(self, config_dict):

@@ -1,5 +1,9 @@
+## Core runtime dependencies
 numpy==1.26.0
 PyYAML==6.0.2
+ tqdm==4.66.5
+
+## Optional dependencies
+## Keep for profiling/visualization workflows or future modules.
 torch==2.5.0
 torchviz==0.0.3
-tqdm==4.66.5
