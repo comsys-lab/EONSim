@@ -231,10 +231,8 @@ class MemoryModel:
             
         # get the number of "-1" in offmem_trace for "onmem_elems"
         onmem_elems = sum(1 for sublist in self.offmem_trace for addr in sublist if addr == -1)
-        # Add onmem_elems to offmem_cycles
-        # self.offmem_cycles += onmem_elems
         # Add len(self.offmem_trace)/1024 to offmem_cycles (for loop overhead)
-        self.offmem_cycles += (len(self.offmem_trace) // 1024) * 20  # Assuming 20 cycles latency
+        self.offmem_cycles += (len(self.offmem_trace) // 1024) * 41  # Assuming 20 cycles latency
     
     def cleanup_intermediate_directory(self):
         """Remove the intermediate directory after simulation"""
@@ -276,12 +274,12 @@ class MemoryModel:
         content_lines = []
         
         if self.execution_successful:
-            content_lines.append(f"Off-chip Memory Cycles: {self.offmem_cycles}")
+            content_lines.append(f"Memory Cycles: {self.offmem_cycles}")
             # content_lines.append(f"Simulation Status: Successful")
         else:
             # content_lines.append("Simulation Status: Failed")
-            content_lines.append("Off-chip Memory Cycles: N/A")
+            content_lines.append("Memory Cycles: N/A")
             
         # content_lines.append(f"Results Directory: {self.intermediate_dir}")
         
-        print_styled_box("Off-chip Memory Simulation Results", content_lines)
+        print_styled_box("Memory Simulation Results", content_lines)

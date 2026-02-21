@@ -354,4 +354,4 @@ class CoreOnmem:
         #         f"Accesses: {core_total}   Hits: {core_hits}   Misses: {core_miss}"
         #     )
         
-        print_styled_box("Simulation Results", content)
+        print_styled_box("On-Chip Memory Stats", content)

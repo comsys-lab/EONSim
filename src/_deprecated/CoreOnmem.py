@@ -238,4 +238,4 @@ class CoreOnmem:
                 )
         
         
-        print_styled_box("Simulation Results", content)
+        print_styled_box("On-Chip Memory Stats", content)
