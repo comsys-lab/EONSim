@@ -44,82 +44,116 @@ class ConfigLoader:
         if not local_buffer_config:
             local_buffer_config = config_data.get('memory', {})
 
-        mem_size = local_buffer_config.get('mem_size', 0)
-        mem_type = local_buffer_config.get('mem_type', '')
+        onmem_size = local_buffer_config.get('mem_size', 0)
+        onmem_type = local_buffer_config.get('mem_type', '')
         policy = local_buffer_config.get('policy', '')
-        mem_policy = mem_type + '_' + policy if policy else mem_type
-        mem_gran = local_buffer_config.get('access_granularity', 0)
-        mem_latency = local_buffer_config.get('access_latency', 1)
+        onmem_policy = onmem_type + '_' + policy if policy else onmem_type
+        onmem_gran = local_buffer_config.get('access_granularity', 0)
+        onmem_latency = local_buffer_config.get('access_latency', 1)
 
         cache_way = 0
         cache_line_size = 0
         rrpv_bits = 0
         rrip_insert = 0
+        lfu_counter_bits = 8
+        lfu_aging_interval = 0
 
-        if mem_type == "cache":
+        if onmem_type == "cache":
             cache_way = local_buffer_config.get('cache_way', 0)
-            cache_line_size = mem_gran
+            cache_line_size = onmem_gran
 
-        if mem_policy in ['cache_SRRIP', 'profile_dynamic_SRRIP']:
+        if onmem_policy in ['cache_SRRIP', 'profile_dynamic_SRRIP']:
             rrpv_bits = local_buffer_config.get('RRPV_bits', 0)
             rrip_insert = local_buffer_config.get('RRPV_insertion', 0)
 
-        if mem_policy == 'profile_dynamic_SRRIP':
+        if onmem_policy == 'cache_LFU':
+            lfu_counter_bits = local_buffer_config.get('lfu_counter_bits', 8)
+            lfu_aging_interval = local_buffer_config.get('lfu_aging_interval', 0)
+
+        if onmem_policy == 'profile_dynamic_SRRIP':
             rrpv_bits = 4
             rrip_insert = 14
 
         result['local_buffer'] = {
-            'mem_size': mem_size,
-            'mem_type': mem_type,
-            'mem_policy': mem_policy,
-            'mem_gran': mem_gran,
-            'mem_latency': mem_latency,
+            'mem_size': onmem_size,
+            'mem_type': onmem_type,
+            'mem_policy': onmem_policy,
+            'mem_gran': onmem_gran,
+            'mem_latency': onmem_latency,
             'cache_way': cache_way,
             'cache_line_size': cache_line_size,
             'rrpv_bits': rrpv_bits,
-            'rrip_insert': rrip_insert
+            'rrip_insert': rrip_insert,
+            'lfu_counter_bits': lfu_counter_bits,
+            'lfu_aging_interval': lfu_aging_interval,
         }
-        result['cache_config'] = [cache_way, cache_line_size, rrpv_bits, rrip_insert]
+        result['cache_config'] = {
+            'way': cache_way,
+            'line_size': cache_line_size,
+            'rrpv_bits': rrpv_bits,
+            'rrip_insert': rrip_insert,
+            'lfu_counter_bits': lfu_counter_bits,
+            'lfu_aging_interval': lfu_aging_interval,
+        }
 
         global_buffer_config = config_data.get('global_buffer', {})
-        global_mem_size = 0
-        global_mem_type = None
-        global_mem_policy = None
-        global_mem_gran = 0
-        global_mem_latency = 15
+        global_onmem_size = 0
+        global_onmem_type = None
+        global_onmem_policy = None
+        global_onmem_gran = 0
+        global_onmem_latency = 15
         global_cache_way = 0
         global_cache_line_size = 0
         global_rrpv_bits = 0
         global_rrip_insert = 0
+        global_lfu_counter_bits = 8
+        global_lfu_aging_interval = 0
 
         if global_buffer_config:
-            global_mem_size = global_buffer_config.get('mem_size', 0)
-            global_mem_type = global_buffer_config.get('mem_type', '')
+            global_onmem_size = global_buffer_config.get('mem_size', 0)
+            global_onmem_type = global_buffer_config.get('mem_type', '')
             global_policy = global_buffer_config.get('policy', '')
-            global_mem_policy = global_mem_type + '_' + global_policy if global_policy else global_mem_type
-            global_mem_gran = global_buffer_config.get('access_granularity', 0)
-            global_mem_latency = global_buffer_config.get('access_latency', 15)
+            global_onmem_policy = global_onmem_type + '_' + global_policy if global_policy else global_onmem_type
+            global_onmem_gran = global_buffer_config.get('access_granularity', 0)
+            global_onmem_latency = global_buffer_config.get('access_latency', 15)
 
-            if global_mem_type == "cache":
+            if global_onmem_type == "cache":
                 global_cache_way = global_buffer_config.get('cache_way', 0)
-                global_cache_line_size = global_mem_gran
+                global_cache_line_size = global_onmem_gran
 
-            if global_mem_policy in ['cache_SRRIP', 'profile_dynamic_SRRIP']:
+            if global_onmem_policy in ['cache_SRRIP', 'profile_dynamic_SRRIP']:
                 global_rrpv_bits = global_buffer_config.get('RRPV_bits', 0)
                 global_rrip_insert = global_buffer_config.get('RRPV_insertion', 0)
 
+            if global_onmem_policy == 'cache_LFU':
+                global_lfu_counter_bits = global_buffer_config.get('lfu_counter_bits', 8)
+                global_lfu_aging_interval = global_buffer_config.get('lfu_aging_interval', 0)
+
+            if global_onmem_policy == 'profile_dynamic_SRRIP':
+                global_rrpv_bits = 4
+                global_rrip_insert = 14
+
         result['global_buffer'] = {
-            'mem_size': global_mem_size,
-            'mem_type': global_mem_type,
-            'mem_policy': global_mem_policy,
-            'mem_gran': global_mem_gran,
-            'mem_latency': global_mem_latency,
+            'mem_size': global_onmem_size,
+            'mem_type': global_onmem_type,
+            'mem_policy': global_onmem_policy,
+            'mem_gran': global_onmem_gran,
+            'mem_latency': global_onmem_latency,
             'cache_way': global_cache_way,
             'cache_line_size': global_cache_line_size,
             'rrpv_bits': global_rrpv_bits,
-            'rrip_insert': global_rrip_insert
+            'rrip_insert': global_rrip_insert,
+            'lfu_counter_bits': global_lfu_counter_bits,
+            'lfu_aging_interval': global_lfu_aging_interval,
         }
-        result['global_cache_config'] = [global_cache_way, global_cache_line_size, global_rrpv_bits, global_rrip_insert]
+        result['global_cache_config'] = {
+            'way': global_cache_way,
+            'line_size': global_cache_line_size,
+            'rrpv_bits': global_rrpv_bits,
+            'rrip_insert': global_rrip_insert,
+            'lfu_counter_bits': global_lfu_counter_bits,
+            'lfu_aging_interval': global_lfu_aging_interval,
+        }
 
         vector_unit_config = config_data.get('vector_unit', {})
         result['vector_unit'] = {

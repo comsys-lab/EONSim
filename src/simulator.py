@@ -134,6 +134,19 @@ if __name__ == "__main__":
         prof_multiplier=sim_cfg.prof_multiplier,
         mem_latency=sim_cfg.mem_latency,
         num_cores=sim_cfg.num_cores,
+        onchip_structure=sim_cfg.onchip_structure,
+        local_onmem_config={
+            "mem_size": sim_cfg.local_onmem_size,
+            "mem_type": sim_cfg.local_onmem_type,
+            "mem_policy": sim_cfg.local_onmem_policy,
+            "mem_latency": sim_cfg.local_onmem_latency,
+        },
+        global_onmem_config={
+            "mem_size": sim_cfg.global_onmem_size,
+            "mem_type": sim_cfg.global_onmem_type,
+            "mem_policy": sim_cfg.global_onmem_policy,
+            "mem_latency": sim_cfg.global_onmem_latency,
+        },
         debug=sim_cfg.debug,
     )
     core_onmem_obj.set_policy(sim_cfg.mem_policy)
@@ -158,18 +171,18 @@ if __name__ == "__main__":
     ### Off-chip Memory Simulation using mNPUsim ###
     ####################################################
     
-    helper.set_timer()
-    memory_model = MemoryModel(
-        sim_cfg.script_dir,
-        core_onmem_obj.offmem_trace,
-        sim_cfg.mnpusim_path,
-        sim_cfg.mnpusim_config_path,
-        sim_cfg.offchip_memory_config,
-        sim_cfg.npumem_config,
-        debug=sim_cfg.debug,
-    )
-    memory_model.do_memory_simulation()
-    helper.end_timer("off-chip memory simulation")
+    # helper.set_timer()
+    # memory_model = MemoryModel(
+    #     sim_cfg.script_dir,
+    #     core_onmem_obj.offmem_trace,
+    #     sim_cfg.mnpusim_path,
+    #     sim_cfg.mnpusim_config_path,
+    #     sim_cfg.offchip_memory_config,
+    #     sim_cfg.npumem_config,
+    #     debug=sim_cfg.debug,
+    # )
+    # memory_model.do_memory_simulation()
+    # helper.end_timer("off-chip memory simulation")
     
     #-------------------------------------------------------------------
     
@@ -178,7 +191,27 @@ if __name__ == "__main__":
     ####################################
     
     # helper.set_timer()
-    # compute_time = RuntimeModel(workload_type, emb_dim, num_tables, bsz, num_indices_per_lookup, vector_lanes, vector_sublanes, vector_alus_per_sublanes, mxu_dimension, num_mxus)
+    # compute_time = RuntimeModel(
+    #     workload_type,
+    #     emb_dim,
+    #     num_tables,
+    #     bsz,
+    #     num_indices_per_lookup,
+    #     vector_lanes,
+    #     vector_sublanes,
+    #     vector_alus_per_sublanes,
+    #     mxu_dimension,
+    #     num_mxus,
+    #     onchip_config={
+    #         "onchip_structure": sim_cfg.onchip_structure,
+    #         "local_onmem_size": sim_cfg.local_onmem_size,
+    #         "local_onmem_latency": sim_cfg.local_onmem_latency,
+    #         "global_onmem_size": sim_cfg.global_onmem_size,
+    #         "global_onmem_latency": sim_cfg.global_onmem_latency,
+    #         "onmem_type": sim_cfg.mem_type,
+    #         "onmem_policy": sim_cfg.mem_policy,
+    #     },
+    # )
     # compute_time.do_runtime_calculation()
     # helper.end_timer("do execution time calculation")
     

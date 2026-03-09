@@ -1,7 +1,7 @@
 import numpy as np
 from tqdm import tqdm
 from helper_modules.Helper import print_styled_header, print_styled_box
-from policies import LRUPolicy, SRRIPPolicy, OptPolicy, SpadPolicy
+from policies import LRUPolicy, SRRIPPolicy, LFUPolicy, OptPolicy, SpadPolicy
 
 class CoreAccessIterator:
     """Iterator for a core's memory accesses in table-partitioned multicore simulation"""
@@ -59,7 +59,7 @@ class CoreAccessIterator:
 
 
 class CoreOnmem:
-    def __init__(self, mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table=0, mem_gran=0, prof_multiplier=1, mem_latency=1, num_cores=1, debug=False):
+    def __init__(self, mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table=0, mem_gran=0, prof_multiplier=1, mem_latency=1, num_cores=1, onchip_structure="global_only", local_onmem_config=None, global_onmem_config=None, debug=False):
         self.mem_size = 0
         self.mem_type = "init"
         self.mem_policy = "init"
@@ -75,9 +75,12 @@ class CoreOnmem:
         self.cache_line_size = 0
         self.cache_set = 0
         self.cache_tag_bits = 0
+        self.cache_config = {}
         self.n_format_byte = 0        
         self.rrpv_bits = 0
         self.rrpv_insert = 0
+        self.lfu_counter_bits = 8
+        self.lfu_aging_interval = 0
         
         self.mem_gran = mem_gran
         self.prof_multiplier = prof_multiplier
@@ -88,8 +91,12 @@ class CoreOnmem:
         
         # Multicore configuration
         self.num_cores = num_cores
+        self.onchip_structure = onchip_structure
         self.debug = debug
         self.core_access_results = [[] for _ in range(num_cores)]
+        self.core_policies = []
+        self.local_onmem_config = dict(local_onmem_config) if local_onmem_config else {}
+        self.global_onmem_config = dict(global_onmem_config) if global_onmem_config else {}
         
         self.set_params(mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table, mem_gran, prof_multiplier, mem_latency)
         
@@ -105,16 +112,19 @@ class CoreOnmem:
         self.n_format_byte = n_format_byte
         
         if self.mem_type == "cache":
+            self.cache_config = dict(cache_config)
             # below configs are only for cache configurations
-            self.cache_way = cache_config[0] # cache_config = [way, line size]
-            self.cache_line_size = cache_config[1]
+            self.cache_way = self.cache_config.get('way', 0)
+            self.cache_line_size = self.cache_config.get('line_size', 0)
             self.cache_set = int(self.mem_size / self.cache_line_size / self.cache_way)
             # Fix: Use ceiling of log2 to handle non-power-of-2 cache sets
             self.cache_index_bits = int(np.ceil(np.log2(self.cache_set))) if self.cache_set > 1 else 0
             self.cache_offset_bits = int(np.log2(self.cache_line_size-1)+1) # byte offset
             self.cache_tag_bits = 48 - self.cache_index_bits - self.cache_offset_bits # 48 bits - index bits - byte offset
-            self.rrpv_bits = cache_config[2]
-            self.rrpv_insert = cache_config[3]
+            self.rrpv_bits = self.cache_config.get('rrpv_bits', 0)
+            self.rrpv_insert = self.cache_config.get('rrip_insert', 0)
+            self.lfu_counter_bits = self.cache_config.get('lfu_counter_bits', 8)
+            self.lfu_aging_interval = self.cache_config.get('lfu_aging_interval', 0)
         elif self.mem_type == "spad":
             self.mem_gran = mem_gran
             self.prof_multiplier = prof_multiplier
@@ -145,38 +155,100 @@ class CoreOnmem:
         if self.mem_type == "cache":
             if not policy.startswith("cache_"):
                 assert False, f"Invalid policy: '{policy}' for mem_type: '{self.mem_type}'"
-            cache_config = [self.cache_way, self.cache_line_size, self.rrpv_bits, self.rrpv_insert, self.cache_set]
-            if self.mem_policy == "cache_LRU":
-                self.policy = LRUPolicy(cache_config)
-            elif self.mem_policy == "cache_SRRIP":
-                self.policy = SRRIPPolicy(cache_config)
-            elif self.mem_policy == "cache_OPT":
-                self.policy = OptPolicy(cache_config, self.emb_dataset, self.num_cores)
+
+            cache_config = dict(self.cache_config)
+            cache_config['set_count'] = self.cache_set
+
+            if self.onchip_structure in {"global_only", "two_level"}:
+                # In two-level mode, local buffer is treated as a prefetching buffer.
+                self.policy = self._create_cache_policy(self.mem_policy, cache_config, self.emb_dataset, self.num_cores)
+                self.policy.initialize()
+                self.on_mem = self.policy.on_mem
+            elif self.onchip_structure == "local_only":
+                self.core_policies = []
+                table_ranges = self._partition_tables_across_cores()
+                for core_id, (table_start, table_end) in enumerate(table_ranges):
+                    core_dataset = [batch[table_start:table_end] for batch in self.emb_dataset]
+                    core_policy = self._create_cache_policy(self.mem_policy, cache_config, core_dataset, 1)
+                    core_policy.initialize()
+                    self.core_policies.append(core_policy)
+
+                self.on_mem = [policy.on_mem for policy in self.core_policies]
             else:
-                raise NotImplementedError(f"Policy {self.mem_policy} not implemented")
+                raise NotImplementedError(f"Unknown on-chip structure: {self.onchip_structure}")
         elif self.mem_type == "spad":
             if not policy.startswith("spad_"):
                 assert False, f"Invalid policy: '{policy}' for mem_type: '{self.mem_type}'"
             self.policy = SpadPolicy(self.mem_size, self.mem_gran, self.emb_dim, self.n_format_byte, self.emb_dataset, self.vectors_per_table, self.prof_multiplier, self.mem_policy, self.num_cores, debug=self.debug)
+            self.policy.initialize()
+            self.on_mem = self.policy.on_mem
 
-        self.policy.initialize()
-        self.on_mem = self.policy.on_mem
+    def _create_cache_policy(self, policy, cache_config, policy_dataset, policy_num_cores):
+        if policy == "cache_LRU":
+            return LRUPolicy(cache_config)
+        if policy == "cache_SRRIP":
+            return SRRIPPolicy(cache_config)
+        if policy == "cache_LFU":
+            return LFUPolicy(cache_config)
+        if policy == "cache_OPT":
+            return OptPolicy(cache_config, policy_dataset, policy_num_cores)
+        raise NotImplementedError(f"Policy {policy} not implemented")
 
     def print_config(self):
         content = [
             f"Number of cores: {self.num_cores}",
-            f"Memory size: {self.mem_size} B ({int(self.mem_size/1024/1024)} MB)",
-            f"Memory type: {self.mem_type}",
-            f"Memory policy: {self.mem_policy}",
-            f"Memory access latency: {self.mem_latency} cycles"
+            f"On-chip structure: {self.onchip_structure}",
         ]
-        if self.mem_type == "cache":
+
+        local_size = int(self.local_onmem_config.get("mem_size", 0) or 0)
+        global_size = int(self.global_onmem_config.get("mem_size", 0) or 0)
+
+        if self.onchip_structure in {"local_only", "two_level"} and local_size > 0:
             content.extend([
-                f"Cache way: {self.cache_way}-way",
-                f"Cache line size: {self.cache_line_size} B",
-                f"Cache set: {self.cache_set} sets",
-                f"Cache tag bits: {self.cache_tag_bits} bits"
+                f"Local on-chip memory size: {local_size} KB",
+                f"Local on-chip memory type: {self.local_onmem_config.get('mem_type', 'N/A')}",
+                f"Local on-chip memory policy: {self.local_onmem_config.get('mem_policy', 'N/A')}",
+                f"Local on-chip memory latency: {self.local_onmem_config.get('mem_latency', 'N/A')} cycles",
             ])
+
+        if self.onchip_structure in {"global_only", "two_level"} and global_size > 0:
+            content.extend([
+                f"Global on-chip memory size: {global_size} KB",
+                f"Global on-chip memory type: {self.global_onmem_config.get('mem_type', self.mem_type)}",
+                f"Global on-chip memory policy: {self.global_onmem_config.get('mem_policy', self.mem_policy)}",
+                f"Global on-chip memory latency: {self.global_onmem_config.get('mem_latency', self.mem_latency)} cycles",
+            ])
+
+        if self.onchip_structure == "local_only":
+            content.extend([
+                f"Local on-chip memory type: {self.mem_type}",
+                f"Local on-chip memory policy: {self.mem_policy}",
+            ])
+        else:
+            content.extend([
+                f"Global on-chip memory type: {self.mem_type}",
+                f"Global on-chip memory policy: {self.mem_policy}",
+            ])
+
+        if self.mem_type == "cache":
+            if self.onchip_structure == "local_only":
+                content.extend([
+                    f"Local on-chip memory (cache) way: {self.cache_way}-way",
+                    f"Local on-chip memory (cache) line size: {self.cache_line_size} B",
+                    f"Local on-chip memory (cache) set: {self.cache_set} sets",
+                    f"Local on-chip memory (cache) tag bits: {self.cache_tag_bits} bits",
+                ])
+            else:
+                content.extend([
+                    f"Global on-chip memory (cache) way: {self.cache_way}-way",
+                    f"Global on-chip memory (cache) line size: {self.cache_line_size} B",
+                    f"Global on-chip memory (cache) set: {self.cache_set} sets",
+                    f"Global on-chip memory (cache) tag bits: {self.cache_tag_bits} bits",
+                ])
+
+        if self.onchip_structure == "two_level":
+            content.append("Note: In two-level structure, local buffer acts as a prefetching buffer.")
+
         print_styled_box("On-Chip Memory Configuration", content)
 
     def print_sim(self):
@@ -260,36 +332,66 @@ class CoreOnmem:
                     ))
 
                 total_accesses = sum(it.total_accesses for it in core_iterators)
-                tick = 0
-                active_cores = [True] * self.num_cores
 
-                with tqdm(total=total_accesses, desc=f"Batch {nb}") as pbar:
-                    while any(active_cores):
-                        core_id = tick % self.num_cores
+                if self.onchip_structure in {"global_only", "two_level"}:
+                    tick = 0
+                    active_cores = [True] * self.num_cores
 
-                        if active_cores[core_id] and core_iterators[core_id].has_next():
-                            _, table_id, vec_id, addr = core_iterators[core_id].get_next()
+                    with tqdm(total=total_accesses, desc=f"Batch {nb}") as pbar:
+                        while any(active_cores):
+                            core_id = tick % self.num_cores
 
-                            tag = self.get_tag_bits(addr)
-                            index = self.get_index_bits(addr)
+                            if active_cores[core_id] and core_iterators[core_id].has_next():
+                                _, table_id, vec_id, addr = core_iterators[core_id].get_next()
 
-                            hit, victim = self.policy.handle_access(tag, index)
+                                tag = self.get_tag_bits(addr)
+                                index = self.get_index_bits(addr)
 
-                            if hit:
-                                batch_hit += 1
-                                core_batch_stats[core_id][0] += 1
-                            else:
-                                batch_miss += 1
-                                core_batch_stats[core_id][1] += 1
-                                self.offmem_trace[nb][table_id][vec_id] = addr
+                                hit, victim = self.policy.handle_access(tag, index)
 
-                            self.policy.post_access_processing(hit, tag, index, vec_id)
-                            pbar.update(1)
+                                if hit:
+                                    batch_hit += 1
+                                    core_batch_stats[core_id][0] += 1
+                                else:
+                                    batch_miss += 1
+                                    core_batch_stats[core_id][1] += 1
+                                    self.offmem_trace[nb][table_id][vec_id] = addr
 
-                            if not core_iterators[core_id].has_next():
+                                self.policy.post_access_processing(hit, tag, index, vec_id)
+                                pbar.update(1)
+
+                                if not core_iterators[core_id].has_next():
+                                    active_cores[core_id] = False
+                            elif active_cores[core_id]:
                                 active_cores[core_id] = False
 
-                        tick += 1
+                            tick += 1
+
+                elif self.onchip_structure == "local_only":
+                    with tqdm(total=total_accesses, desc=f"Batch {nb}") as pbar:
+                        for core_id in range(self.num_cores):
+                            core_policy = self.core_policies[core_id]
+                            while core_iterators[core_id].has_next():
+                                _, table_id, vec_id, addr = core_iterators[core_id].get_next()
+
+                                tag = self.get_tag_bits(addr)
+                                index = self.get_index_bits(addr)
+
+                                hit, victim = core_policy.handle_access(tag, index)
+
+                                if hit:
+                                    batch_hit += 1
+                                    core_batch_stats[core_id][0] += 1
+                                else:
+                                    batch_miss += 1
+                                    core_batch_stats[core_id][1] += 1
+                                    self.offmem_trace[nb][table_id][vec_id] = addr
+
+                                core_policy.post_access_processing(hit, tag, index, vec_id)
+                                pbar.update(1)
+
+                else:
+                    raise NotImplementedError(f"onchip_structure '{self.onchip_structure}' is not implemented.")
 
             self.access_results.append([batch_hit, batch_miss])
             for core_id in range(self.num_cores):  # kept for potential future use

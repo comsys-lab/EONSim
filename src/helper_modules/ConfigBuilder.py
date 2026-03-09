@@ -28,12 +28,21 @@ class SimConfig:
     mnpusim_path: str
     mnpusim_config_path: str
     matrix_config_path: str
+    onchip_structure: str
+    local_onmem_type: str
+    local_onmem_policy: str
+    local_onmem_size: int
+    local_onmem_latency: int
+    global_onmem_type: str
+    global_onmem_policy: str
+    global_onmem_size: int
+    global_onmem_latency: int
     mem_size: int
     mem_type: str
     mem_policy: str
     mem_gran: int
     mem_latency: int
-    cache_config: list
+    cache_config: dict
     num_cores: int
     output_filename: str
 
@@ -45,7 +54,7 @@ def _ensure_positive_int(value, name):
 
 def _validate_memory_policy(mem_type, mem_policy):
     supported_policies = {
-        "cache": {"cache_LRU", "cache_SRRIP", "cache_OPT"},
+        "cache": {"cache_LRU", "cache_SRRIP", "cache_LFU", "cache_OPT"},
         "spad": {"spad_naive", "spad_random", "spad_oracle"},
     }
 
@@ -60,6 +69,18 @@ def _validate_memory_policy(mem_type, mem_policy):
         )
 
 
+def _determine_onchip_structure(local_onmem_size, global_onmem_size):
+    if local_onmem_size <= 0 and global_onmem_size > 0:
+        return "global_only"
+    if local_onmem_size > 0 and global_onmem_size <= 0:
+        return "local_only"
+    if local_onmem_size > 0 and global_onmem_size > 0:
+        return "two_level"
+    raise ValueError(
+        "Invalid on-chip memory configuration: both local_buffer.mem_size and global_buffer.mem_size are zero."
+    )
+
+
 def _validate_config_values(
     emb_dim,
     vectors_per_table,
@@ -68,12 +89,9 @@ def _validate_config_values(
     n_format_bits,
     nbatches,
     bsz,
-    mem_size,
-    mem_type,
-    mem_policy,
-    mem_gran,
-    mem_latency,
-    cache_config,
+    onchip_structure,
+    onmem,
+    onmem_cache_config,
     core_row,
     core_col,
 ):
@@ -85,17 +103,29 @@ def _validate_config_values(
     _ensure_positive_int(nbatches, "num_batches")
     _ensure_positive_int(bsz, "batch_size")
 
-    _ensure_positive_int(mem_size, "local_buffer.mem_size")
-    _ensure_positive_int(mem_gran, "local_buffer.access_granularity")
-    _ensure_positive_int(mem_latency, "local_buffer.access_latency")
+    if onchip_structure not in {"global_only", "local_only", "two_level"}:
+        raise ValueError(f"Invalid on-chip structure: {onchip_structure}")
+
+    _ensure_positive_int(onmem['mem_size'], "onmem.mem_size")
+    _ensure_positive_int(onmem['mem_gran'], "onmem.access_granularity")
+    _ensure_positive_int(onmem['mem_latency'], "onmem.access_latency")
     _ensure_positive_int(core_row, "core_dim.row")
     _ensure_positive_int(core_col, "core_dim.col")
 
-    _validate_memory_policy(mem_type, mem_policy)
+    _validate_memory_policy(onmem['mem_type'], onmem['mem_policy'])
 
-    cache_way = cache_config[0] if len(cache_config) > 0 else 0
-    if mem_type == "cache":
+    cache_way = onmem_cache_config.get('way', 0)
+    if onmem['mem_type'] == "cache":
         _ensure_positive_int(cache_way, "local_buffer.cache_way")
+
+    if onmem['mem_policy'] == "cache_LFU":
+        lfu_counter_bits = onmem_cache_config.get('lfu_counter_bits', 0)
+        lfu_aging_interval = onmem_cache_config.get('lfu_aging_interval', -1)
+        _ensure_positive_int(lfu_counter_bits, "local_buffer.lfu_counter_bits")
+        if not isinstance(lfu_aging_interval, int) or lfu_aging_interval < 0:
+            raise ValueError(
+                f"Invalid 'local_buffer.lfu_aging_interval': expected non-negative integer, got {lfu_aging_interval}"
+            )
 
 
 def build_sim_config(args):
@@ -173,18 +203,22 @@ def build_sim_config(args):
     mem_config = ConfigLoader.load_memory_config(config_path)
 
     local_buf = mem_config['local_buffer']
-    mem_size = local_buf['mem_size']
-    mem_type = local_buf['mem_type']
-    mem_policy = local_buf['mem_policy']
-    mem_gran = local_buf['mem_gran']
-    mem_latency = local_buf['mem_latency']
-    cache_config = mem_config['cache_config']
-
     global_buf = mem_config['global_buffer']
-    global_mem_size = global_buf['mem_size']
-    global_mem_type = global_buf['mem_type']
-    global_mem_policy = global_buf['mem_policy']
-    global_mem_latency = global_buf['mem_latency']
+
+    onchip_structure = _determine_onchip_structure(local_buf['mem_size'], global_buf['mem_size'])
+
+    if onchip_structure in {"global_only", "two_level"}:
+        onmem = global_buf
+        cache_config = mem_config['global_cache_config']
+    else:
+        onmem = local_buf
+        cache_config = mem_config['cache_config']
+
+    mem_size = onmem['mem_size']
+    mem_type = onmem['mem_type']
+    mem_policy = onmem['mem_policy']
+    mem_gran = onmem['mem_gran']
+    mem_latency = onmem['mem_latency']
 
     core_dim = mem_config['core_dim']
     core_row = core_dim['row']
@@ -199,12 +233,9 @@ def build_sim_config(args):
         n_format_bits=n_format_bits,
         nbatches=nbatches,
         bsz=bsz,
-        mem_size=mem_size,
-        mem_type=mem_type,
-        mem_policy=mem_policy,
-        mem_gran=mem_gran,
-        mem_latency=mem_latency,
-        cache_config=cache_config,
+        onchip_structure=onchip_structure,
+        onmem=onmem,
+        onmem_cache_config=cache_config,
         core_row=core_row,
         core_col=core_col,
     )
@@ -219,15 +250,24 @@ def build_sim_config(args):
     num_mxus = matrix_unit['num_mxus']
 
     if debug:
+        print(f"[DEBUG] On-chip structure: {onchip_structure}")
+    if debug:
         print(f"[DEBUG] Core Dimension - Row: {core_row}, Col: {core_col}")
     if debug:
         print(f"[DEBUG] Vector Unit - Lanes: {vector_lanes}, Sublanes: {vector_sublanes}, ALUs per sublanes: {vector_alus_per_sublanes}")
     if debug:
         print(f"[DEBUG] Matrix Unit - MXU dimension: {mxu_dimension}, Number of MXUs: {num_mxus}")
     if debug:
-        print(f"[DEBUG] Local Buffer - Type: {mem_type}, Size: {mem_size} KB, Policy: {mem_policy}, Latency: {mem_latency} cycles")
-    if debug and global_mem_size > 0:
-        print(f"[DEBUG] Global Buffer - Type: {global_mem_type}, Size: {global_mem_size} KB, Policy: {global_mem_policy}, Latency: {global_mem_latency} cycles")
+        if onchip_structure == "local_only":
+            print(
+                f"[DEBUG] Local Buffer - Type: {mem_type}, Size: {mem_size} KB, "
+                f"Policy: {mem_policy}, Latency: {mem_latency} cycles"
+            )
+        else:
+            print(
+                f"[DEBUG] Global Buffer - Type: {mem_type}, Size: {mem_size} KB, "
+                f"Policy: {mem_policy}, Latency: {mem_latency} cycles"
+            )
 
     return SimConfig(
         debug=debug,
@@ -250,6 +290,15 @@ def build_sim_config(args):
         mnpusim_path=mnpusim_path,
         mnpusim_config_path=mnpusim_config_path,
         matrix_config_path=matrix_config_path,
+        onchip_structure=onchip_structure,
+        local_onmem_type=local_buf['mem_type'],
+        local_onmem_policy=local_buf['mem_policy'],
+        local_onmem_size=local_buf['mem_size'],
+        local_onmem_latency=local_buf['mem_latency'],
+        global_onmem_type=global_buf['mem_type'],
+        global_onmem_policy=global_buf['mem_policy'],
+        global_onmem_size=global_buf['mem_size'],
+        global_onmem_latency=global_buf['mem_latency'],
         mem_size=mem_size,
         mem_type=mem_type,
         mem_policy=mem_policy,

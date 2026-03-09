@@ -16,14 +16,14 @@ workload="dlrm_dcnv2"
 WORKLOAD_CONFIG="${workload_path_dir}${workload}"
 
 data_path_dir="$(pwd)/datasets/"
-dataset_list=("dlrm/reuse_high_test.txt")
+dataset_list=("dlrm/reuse_low_trunc.txt") # "dlrm/reuse_high_test.txt" "dlrm/reuse_low_trunc.txt"
 ###############
 
 ### simulation parameters ###
 MEM_CFG=$1
 MATRIX_CFG="tpuv6e.cfg"
 
-NUM_BATCH=1
+NUM_BATCH=3
 BS=256
 
 # Set PROF_MULTIPLIER to $2 if provided, otherwise default to 1 (this is only used in spad_oracle config)

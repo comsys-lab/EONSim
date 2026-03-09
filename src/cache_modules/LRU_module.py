@@ -71,6 +71,26 @@ class LRU_module:
         self._add_to_front(node)
         return True
 
+    def remove_addr(self, addr): # for LFU
+        """Remove a specific address from cache if present."""
+        if addr not in self.cache_map:
+            return False
+
+        node = self.cache_map[addr]
+        self._remove_node(node)
+        del self.cache_map[addr]
+        self.size -= 1
+        return True
+
+    def find_lru_in_candidates(self, candidates): # for LFU tie-breaking
+        """Return the least-recently-used address among candidates."""
+        current = self.tail.prev
+        while current != self.head:
+            if current.addr in candidates:
+                return current.addr
+            current = current.prev
+        return None
+
     def is_empty(self):
         """Check if cache is empty"""
         return self.size == 0

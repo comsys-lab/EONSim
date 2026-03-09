@@ -1,0 +1,34 @@
+core_dim:
+  row: 1
+  col: 1
+
+vector_unit:
+  lanes: 128
+  sublanes: 8
+  ALUs_per_sublanes: 4
+
+matrix_unit:
+  mxu_dimension: 128
+  num_mxus: 4
+
+local_buffer:
+  mem_size: 131072
+  mem_type: cache
+  policy: LFU
+  policy_parameter: 4
+  access_granularity: 128
+  access_latency: 1
+  cache_way: 16
+  cache_line_size: 128
+
+global_buffer:
+  mem_size: 0
+  mem_type: cache
+  policy: LFU
+  policy_parameter: 4
+  access_granularity: 128
+  access_latency: 15
+  cache_way: 16
+  lfu_counter_bits: 8
+  lfu_aging_interval: 0
+  cache_line_size: 128

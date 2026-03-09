@@ -3,7 +3,7 @@ import numpy as np
 from helper_modules.Helper import print_styled_header, print_styled_box
 
 class RuntimeModel:
-    def __init__(self, workload_type, emb_dim, num_tables, bsz, num_indices_per_lookup, vector_lanes, vector_sublanes, vector_alus_per_sublanes, mxu_dimension, num_mxus):
+    def __init__(self, workload_type, emb_dim, num_tables, bsz, num_indices_per_lookup, vector_lanes, vector_sublanes, vector_alus_per_sublanes, mxu_dimension, num_mxus, onchip_config=None):
         
         print("\n\n\n START RUNTIME CALCULATION \n")
         
@@ -17,14 +17,17 @@ class RuntimeModel:
         self.vector_alus_per_sublanes = 0
         self.mxu_dimension = 0
         self.num_mxus = 0
+
+        # On-chip config metadata (interface only)
+        self.onchip_config = {}
         
         # Runtime calculation results
         self.runtime_results = []
         self.total_runtime = 0
         
-        self.set_params(workload_type, emb_dim, num_tables, bsz, num_indices_per_lookup, vector_lanes, vector_sublanes, vector_alus_per_sublanes, mxu_dimension, num_mxus)
+        self.set_params(workload_type, emb_dim, num_tables, bsz, num_indices_per_lookup, vector_lanes, vector_sublanes, vector_alus_per_sublanes, mxu_dimension, num_mxus, onchip_config)
     
-    def set_params(self, workload_type, emb_dim, num_tables, bsz, num_indices_per_lookup, vector_lanes, vector_sublanes, vector_alus_per_sublanes, mxu_dimension, num_mxus):
+    def set_params(self, workload_type, emb_dim, num_tables, bsz, num_indices_per_lookup, vector_lanes, vector_sublanes, vector_alus_per_sublanes, mxu_dimension, num_mxus, onchip_config=None):
         print(f"Setting parameters for runtime model...")
         self.workload_type = workload_type
         self.emb_dim = emb_dim
@@ -36,6 +39,7 @@ class RuntimeModel:
         self.vector_alus_per_sublanes = vector_alus_per_sublanes
         self.mxu_dimension = mxu_dimension
         self.num_mxus = num_mxus
+        self.onchip_config = dict(onchip_config) if onchip_config else {}
     
     def do_runtime_calculation(self):
         print(f"Calculating runtime model...")

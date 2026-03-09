@@ -1,6 +1,7 @@
 from collections import Counter
 import numpy as np
 from cache_modules.LRU_module import LRU_module
+from cache_modules.LFU_module import LFU_module
 from cache_modules.SRRIP_module import SRRIP_module
 import itertools
 from tqdm import tqdm
@@ -8,8 +9,8 @@ import random
 
 class CachePolicy:
     def __init__(self, cache_config):
-        self.cache_way = cache_config[0]
-        self.cache_set = cache_config[4]
+        self.cache_way = cache_config['way']
+        self.cache_set = cache_config['set_count']
 
     def initialize(self):
         pass
@@ -34,8 +35,8 @@ class LRUPolicy(CachePolicy):
 class SRRIPPolicy(CachePolicy):
     def __init__(self, cache_config):
         super().__init__(cache_config)
-        self.rrpv_bits = cache_config[2]
-        self.rrpv_insert = cache_config[3]
+        self.rrpv_bits = cache_config['rrpv_bits']
+        self.rrpv_insert = cache_config['rrip_insert']
 
     def initialize(self):
         self.on_mem = [SRRIP_module(self.cache_way, self.rrpv_bits, self.rrpv_insert) for _ in range(self.cache_set)]
@@ -43,13 +44,29 @@ class SRRIPPolicy(CachePolicy):
     def handle_access(self, tag, index):
         return self.on_mem[index].access(tag), None
 
+
+class LFUPolicy(CachePolicy):
+    def __init__(self, cache_config):
+        super().__init__(cache_config)
+        self.counter_bits = cache_config.get('lfu_counter_bits', 8)
+        self.aging_interval = cache_config.get('lfu_aging_interval', 0)
+
+    def initialize(self):
+        self.on_mem = [
+            LFU_module(self.cache_way, self.counter_bits, self.aging_interval)
+            for _ in range(self.cache_set)
+        ]
+
+    def handle_access(self, tag, index):
+        return self.on_mem[index].access(tag)
+
 class OptPolicy(CachePolicy):
     def __init__(self, cache_config, emb_dataset, num_cores=1):
         super().__init__(cache_config)
         
-        self.cache_way = cache_config[0]
-        self.cache_line_size = cache_config[1]
-        self.cache_set = cache_config[4]
+        self.cache_way = cache_config['way']
+        self.cache_line_size = cache_config['line_size']
+        self.cache_set = cache_config['set_count']
         self.num_cores = num_cores
         
         cache_offset_bits = int(np.log2(self.cache_line_size-1)+1)
