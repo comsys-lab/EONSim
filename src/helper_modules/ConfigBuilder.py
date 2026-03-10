@@ -21,7 +21,7 @@ class SimConfig:
     bsz: int
     fname: str
     output_dir: str
-    prof_multiplier: int
+    prof_period: int
     script_dir: str
     offchip_memory_config: str
     npumem_config: str
@@ -56,6 +56,7 @@ def _validate_memory_policy(mem_type, mem_policy):
     supported_policies = {
         "cache": {"cache_LRU", "cache_SRRIP", "cache_LFU", "cache_OPT"},
         "spad": {"spad_naive", "spad_random", "spad_oracle"},
+        "profile": {"profile_dynamic_cache", "profile_dynamic_SRRIP", "profile_dynamic_count"},
     }
 
     if mem_type not in supported_policies:
@@ -157,6 +158,11 @@ def build_sim_config(args):
         print(f"[DEBUG] Matrix Ops CSV Config Path: {matrix_ops_csv_path}")
     if debug:
         print(f"[DEBUG] Generated Embedding Size String: {embsize[:50]}...")
+
+    if not isinstance(args.profiling_period, int) or args.profiling_period <= 0:
+        raise ValueError(
+            f"Invalid '--profiling-period': expected positive integer, got {args.profiling_period}"
+        )
 
     output_dir = Helper.build_output_dir(
         output_base_dir=args.output_base_dir,
@@ -283,7 +289,7 @@ def build_sim_config(args):
         bsz=bsz,
         fname=fname,
         output_dir=output_dir,
-        prof_multiplier=args.profiling_multiplier,
+        prof_period=args.profiling_period,
         script_dir=script_dir,
         offchip_memory_config=offchip_memory_config,
         npumem_config=npumem_config,

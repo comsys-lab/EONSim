@@ -11,7 +11,7 @@ from itertools import chain
 from cache_modules.SRRIP_module import SRRIP_module  # Add Python-based SRRIP implementation
 
 class MemProfile:
-    def __init__(self, mem_size, mem_type, cache_config, emb_dim, emb_dataset, vectors_per_table, mem_gran, n_format_byte, profiled_path, prof_multiplier=1):
+    def __init__(self, mem_size, mem_type, cache_config, emb_dim, emb_dataset, vectors_per_table, mem_gran, n_format_byte, profiled_path, prof_period=1):
         self.mem_size = 0 ### KB
         self.mem_type = "init"
         self.mem_gran = 0
@@ -31,14 +31,14 @@ class MemProfile:
         self.n_format_byte = 0
         
         ### this is only for configuring the profiling period
-        self.prof_multiplier = 1
+        self.prof_period = 1
         
         self.access_results = []
         self.spad_load_results = []
                
-        self.set_params(mem_size, mem_type, cache_config, emb_dim, emb_dataset, vectors_per_table, mem_gran, n_format_byte, profiled_path, prof_multiplier)
+        self.set_params(mem_size, mem_type, cache_config, emb_dim, emb_dataset, vectors_per_table, mem_gran, n_format_byte, profiled_path, prof_period)
         
-    def set_params(self, mem_size, mem_type, cache_config, emb_dim, emb_dataset, vectors_per_table, mem_gran, n_format_byte, profiled_path, prof_multiplier):
+    def set_params(self, mem_size, mem_type, cache_config, emb_dim, emb_dataset, vectors_per_table, mem_gran, n_format_byte, profiled_path, prof_period):
         self.mem_size = mem_size * 1024 # KB -> Byte
         self.mem_type = mem_type # spad or cache
         self.mem_gran = mem_gran
@@ -47,7 +47,7 @@ class MemProfile:
         self.n_format_byte = n_format_byte
         
         ### this is only for configuring the profiling period
-        self.prof_multiplier = prof_multiplier
+        self.prof_period = prof_period
                 
         ### below configs are related to the dataset
         self.emb_dim = emb_dim # this is for spad
@@ -299,7 +299,7 @@ class MemProfile:
         dynamic_counter = 0
         sample_rate = 20
         dynamic_counter_threshold_init = 10 # * self.spad_size
-        vectors_in_batch = list(chain.from_iterable(self.emb_dataset[0])) * self.prof_multiplier
+        vectors_in_batch = list(chain.from_iterable(self.emb_dataset[0])) * self.prof_period
         
         dynamic_counter_threshold = max(len(vectors_in_batch), dynamic_counter_threshold_init) * sample_rate # number of vectors in the batch
         
@@ -368,7 +368,7 @@ class MemProfile:
         dynamic_counter = 0
         sample_rate = 1
         dynamic_counter_threshold_init = 10 # * self.spad_size
-        vectors_in_batch = list(chain.from_iterable(self.emb_dataset[0])) * self.prof_multiplier
+        vectors_in_batch = list(chain.from_iterable(self.emb_dataset[0])) * self.prof_period
         
         dynamic_counter_threshold = max(len(vectors_in_batch), dynamic_counter_threshold_init) * sample_rate # number of vectors in the batch
         
@@ -467,7 +467,7 @@ class MemProfile:
         dynamic_counter = 0
         sample_rate = 20
         dynamic_counter_threshold_init = 10 # * self.spad_size
-        vectors_in_batch = list(chain.from_iterable(self.emb_dataset[0])) * self.prof_multiplier
+        vectors_in_batch = list(chain.from_iterable(self.emb_dataset[0])) * self.prof_period
         
         dynamic_counter_threshold = max(len(vectors_in_batch), dynamic_counter_threshold_init) * sample_rate # number of vectors in the batch
         

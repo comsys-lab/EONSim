@@ -7,7 +7,7 @@ import itertools
 from tqdm import tqdm
 import random
 
-class CachePolicy:
+class OnmemPolicy:
     def __init__(self, cache_config):
         self.cache_way = cache_config['way']
         self.cache_set = cache_config['set_count']
@@ -18,10 +18,16 @@ class CachePolicy:
     def handle_access(self, tag, index):
         raise NotImplementedError
 
+    def begin_batch(self, batch_idx):
+        pass
+
+    def end_batch(self, batch_idx):
+        pass
+
     def post_access_processing(self, hit, tag, index, vec):
         pass
 
-class LRUPolicy(CachePolicy):
+class LRUPolicy(OnmemPolicy):
     def initialize(self):
         self.on_mem = [LRU_module(self.cache_way) for _ in range(self.cache_set)]
 
@@ -32,7 +38,7 @@ class LRUPolicy(CachePolicy):
             victim = self.on_mem[index].insert_node(tag)
             return False, victim  # Miss
 
-class SRRIPPolicy(CachePolicy):
+class SRRIPPolicy(OnmemPolicy):
     def __init__(self, cache_config):
         super().__init__(cache_config)
         self.rrpv_bits = cache_config['rrpv_bits']
@@ -45,7 +51,7 @@ class SRRIPPolicy(CachePolicy):
         return self.on_mem[index].access(tag), None
 
 
-class LFUPolicy(CachePolicy):
+class LFUPolicy(OnmemPolicy):
     def __init__(self, cache_config):
         super().__init__(cache_config)
         self.counter_bits = cache_config.get('lfu_counter_bits', 8)
@@ -60,7 +66,7 @@ class LFUPolicy(CachePolicy):
     def handle_access(self, tag, index):
         return self.on_mem[index].access(tag)
 
-class OptPolicy(CachePolicy):
+class OptPolicy(OnmemPolicy):
     def __init__(self, cache_config, emb_dataset, num_cores=1):
         super().__init__(cache_config)
         
@@ -205,15 +211,15 @@ class OptPolicy(CachePolicy):
     def post_access_processing(self, hit, tag, index, vec):
         self.curr_cycle += 1
 
-class SpadPolicy(CachePolicy):
-    def __init__(self, mem_size, mem_gran, emb_dim, n_format_byte, emb_dataset, vectors_per_table, prof_multiplier, spad_policy, num_cores=1, debug=False):
+class SpadPolicy(OnmemPolicy):
+    def __init__(self, mem_size, mem_gran, emb_dim, n_format_byte, emb_dataset, vectors_per_table, prof_period, spad_policy, num_cores=1, debug=False):
         self.mem_size = mem_size
         self.mem_gran = mem_gran
         self.emb_dim = emb_dim
         self.n_format_byte = n_format_byte
         self.emb_dataset = emb_dataset
         self.vectors_per_table = vectors_per_table
-        self.prof_multiplier = prof_multiplier
+        self.prof_period = prof_period
         self.spad_policy = spad_policy
         self.num_cores = num_cores
         self.debug = debug
@@ -306,7 +312,7 @@ class SpadPolicy(CachePolicy):
         return set(on_mem_set)
 
     def set_spad_oracle(self):
-        end_batch = min(self.batch_counter + self.prof_multiplier, len(self.emb_dataset))
+        end_batch = min(self.batch_counter + self.prof_period, len(self.emb_dataset))
         access_freq = Counter()
         for batch_idx in range(self.batch_counter, end_batch):
             if batch_idx >= len(self.emb_dataset): break
@@ -321,3 +327,239 @@ class SpadPolicy(CachePolicy):
         if self.spad_policy == "spad_oracle":
             # This logic is handled in the main simulation loop of the driver
             pass
+
+
+class ProfilePolicy(OnmemPolicy):
+    def __init__(
+        self,
+        mem_size,
+        mem_gran,
+        emb_dim,
+        n_format_byte,
+        emb_dataset,
+        vectors_per_table,
+        prof_period,
+        profile_policy,
+        cache_config,
+        index_trace=None,
+        debug=False,
+    ):
+        super().__init__(cache_config)
+        self.mem_size = mem_size * 1024  # KB -> B
+        self.mem_gran = mem_gran
+        self.emb_dim = emb_dim
+        self.n_format_byte = n_format_byte
+        self.emb_dataset = emb_dataset
+        self.vectors_per_table = vectors_per_table
+        self.prof_period = prof_period
+        self.profile_policy = profile_policy
+        self.index_trace = index_trace
+        self.debug = debug
+
+        self.num_tables = len(self.emb_dataset[0])
+        self.access_per_vector = np.ceil(self.emb_dim * self.n_format_byte / self.mem_gran).astype(np.int32)
+        self.spad_size = np.floor(self.mem_size / self.mem_gran).astype(np.int32)
+
+        # Keep legacy behavior for profile SRRIP unless overridden by config.
+        self.cache_way = cache_config.get('way', 0) or 128
+        self.cache_line_size = cache_config.get('line_size', 0) or self.mem_gran
+        self.cache_set = max(1, int(self.mem_size / self.cache_line_size / self.cache_way))
+
+        self.rrpv_bits = cache_config.get('rrpv_bits', 0) or 4
+        self.rrpv_insert = cache_config.get('rrip_insert', 0) or 14
+
+        self.access_results = []
+        self.spad_load_results = []
+        self.logger_results = []
+
+        self._batch_hit = 0
+        self._batch_miss = 0
+        self._batch_spad_load = 0
+        self._batch_logger_hit = 0
+        self._batch_logger_miss = 0
+
+    def initialize(self):
+        if self.profile_policy == "profile_dynamic_cache":
+            self.logger_size = self.spad_size
+            self.logger = LRU_module(self.logger_size)
+        elif self.profile_policy == "profile_dynamic_SRRIP":
+            self.logger = [np.zeros((0, 2), dtype=np.int64) for _ in range(self.cache_set)]
+        elif self.profile_policy == "profile_dynamic_count":
+            if self.index_trace is None:
+                raise ValueError("index_trace is required for profile_dynamic_count")
+            self.counter_arr = np.zeros((1, len(self.index_trace[0]), self.vectors_per_table), dtype=np.int64)
+            self.counter_set = 0
+        else:
+            raise NotImplementedError(f"Profile policy {self.profile_policy} not implemented")
+
+        self.on_mem = self._set_spad()
+
+    def begin_batch(self, batch_idx):
+        self._batch_hit = 0
+        self._batch_miss = 0
+        self._batch_spad_load = 0
+        self._batch_logger_hit = 0
+        self._batch_logger_miss = 0
+
+    def end_batch(self, batch_idx):
+        self.access_results.append([self._batch_hit, self._batch_miss])
+        self.spad_load_results.append(self._batch_spad_load)
+        if self.profile_policy in {"profile_dynamic_cache", "profile_dynamic_SRRIP"}:
+            self.logger_results.append([self._batch_logger_hit, self._batch_logger_miss])
+
+    def refresh_on_mem(self):
+        self.on_mem = self._set_spad()
+        self._batch_spad_load += self.spad_size
+
+    def _set_spad(self):
+        on_mem_set = []
+
+        if self.profile_policy in {"profile_dynamic_cache", "profile_dynamic_SRRIP"}:
+            logger_empty = (
+                self.profile_policy == "profile_dynamic_cache" and self.logger.is_empty()
+            ) or (
+                self.profile_policy == "profile_dynamic_SRRIP" and all(len(i) == 0 for i in self.logger)
+            )
+
+            if logger_empty:
+                counter = 0
+                break_flag = False
+                for t_i in range(self.num_tables):
+                    for v_i in range(self.vectors_per_table):
+                        for d_i in range(self.access_per_vector):
+                            bytes_per_vec = (self.emb_dim * self.n_format_byte - 1).bit_length()
+                            tbl_bits = t_i << int(np.log2(self.vectors_per_table - 1) + 1 + bytes_per_vec)
+                            vec_idx = v_i << bytes_per_vec
+                            dim_bits = self.mem_gran * d_i
+                            this_addr = tbl_bits + vec_idx + dim_bits
+                            on_mem_set.append(this_addr)
+                            counter += 1
+                            if counter == self.spad_size:
+                                break_flag = True
+                                break
+                        if break_flag:
+                            break
+                    if break_flag:
+                        break
+                on_mem_arr = np.asarray(on_mem_set, dtype=np.int64)
+            else:
+                if self.profile_policy == "profile_dynamic_cache":
+                    on_mem_arr = self.logger.return_as_array()[:self.spad_size]
+                else:
+                    on_mem_arr = np.zeros(self.spad_size, dtype=np.int64)
+                    for i in range(self.cache_set):
+                        this_logger_len = len(self.logger[i])
+                        if this_logger_len < self.cache_way:
+                            on_mem_arr[i * self.cache_way:(i + 1) * self.cache_way] = np.pad(
+                                self.logger[i][:this_logger_len, 0],
+                                (0, self.cache_way - this_logger_len),
+                                'constant',
+                            )
+                        else:
+                            on_mem_arr[i * self.cache_way:(i + 1) * self.cache_way] = self.logger[i][:self.cache_way, 0]
+
+        elif self.profile_policy == "profile_dynamic_count":
+            if self.counter_set == 0:
+                counter = 0
+                break_flag = False
+                for t_i in range(self.num_tables):
+                    for v_i in range(self.vectors_per_table):
+                        for d_i in range(self.access_per_vector):
+                            bytes_per_vec = (self.emb_dim * self.n_format_byte - 1).bit_length()
+                            tbl_bits = t_i << int(np.log2(self.vectors_per_table - 1) + 1 + bytes_per_vec)
+                            vec_idx = v_i << bytes_per_vec
+                            dim_bits = self.mem_gran * d_i
+                            this_addr = tbl_bits + vec_idx + dim_bits
+                            on_mem_set.append(this_addr)
+                            counter += 1
+                            if counter == self.spad_size:
+                                break_flag = True
+                                break
+                        if break_flag:
+                            break
+                    if break_flag:
+                        break
+                self.counter_set = 1
+                on_mem_arr = np.asarray(on_mem_set, dtype=np.int64)
+            else:
+                vectors_needed = self.spad_size // self.access_per_vector
+                flat_indices = np.argpartition(self.counter_arr.ravel(), -vectors_needed)[-vectors_needed:]
+
+                temp = flat_indices % (self.vectors_per_table * len(self.index_trace[0]))
+                table_indices = temp // self.vectors_per_table
+                vector_indices = temp % self.vectors_per_table
+
+                bytes_per_vec = (self.emb_dim * self.n_format_byte - 1).bit_length()
+                dim_offsets = np.arange(self.access_per_vector) * self.mem_gran
+                tbl_bits = table_indices[:, None] << int(np.log2(self.vectors_per_table - 1) + 1 + bytes_per_vec)
+                vec_idx = vector_indices[:, None] << bytes_per_vec
+
+                addresses = tbl_bits + vec_idx + dim_offsets
+                on_mem_arr = addresses.ravel()[:self.spad_size]
+                self.counter_arr = np.zeros((1, len(self.index_trace[0]), self.vectors_per_table), dtype=np.int64)
+
+        else:
+            raise NotImplementedError(f"Profile policy {self.profile_policy} not implemented")
+
+        self.on_mem_set = set(on_mem_arr)
+        return on_mem_arr
+
+    def _get_index_bits(self, addr):
+        if self.cache_set <= 1:
+            return 0
+        cache_index_bits = int(np.ceil(np.log2(self.cache_set)))
+        cache_offset_bits = int(np.log2(self.cache_line_size - 1) + 1)
+        index_msb = cache_index_bits + cache_offset_bits - 1
+        index_lsb = cache_offset_bits
+        mask = ((1 << (index_msb - index_lsb + 1)) - 1) << index_lsb
+        return ((addr & mask) >> index_lsb) % self.cache_set
+
+    def handle_access(self, tag, index, **kwargs):
+        addr = kwargs.get('addr', tag)
+        table_id = kwargs.get('table_id', 0)
+        vec_id = kwargs.get('vec_id', 0)
+        batch_idx = kwargs.get('batch_idx', 0)
+
+        is_hit = addr in self.on_mem_set
+        if is_hit:
+            self._batch_hit += 1
+        else:
+            self._batch_miss += 1
+
+        if self.profile_policy == "profile_dynamic_cache":
+            if not self.logger.search_and_access(addr):
+                self.logger.insert_node(addr)
+                self._batch_logger_miss += 1
+            else:
+                self._batch_logger_hit += 1
+
+        elif self.profile_policy == "profile_dynamic_SRRIP":
+            this_index = self._get_index_bits(addr)
+            this_tag = addr
+            tag_match = np.where(self.logger[this_index][:, 0] == this_tag)[0]
+
+            if len(tag_match) > 0:
+                self._batch_logger_hit += 1
+                self.logger[this_index][tag_match[0], 1] = 0
+            else:
+                self._batch_logger_miss += 1
+                if len(self.logger[this_index]) < self.cache_way:
+                    new_entry = np.array([[this_tag, self.rrpv_insert]])
+                    self.logger[this_index] = np.vstack([self.logger[this_index], new_entry])
+                else:
+                    max_rrpv = 2 ** self.rrpv_bits - 1
+                    replaced = False
+                    while not replaced:
+                        victim_candidates = np.where(self.logger[this_index][:, 1] == max_rrpv)[0]
+                        if len(victim_candidates) > 0:
+                            self.logger[this_index][victim_candidates[0]] = [this_tag, self.rrpv_insert]
+                            replaced = True
+                        else:
+                            self.logger[this_index][:, 1] = np.minimum(self.logger[this_index][:, 1] + 1, max_rrpv)
+
+        elif self.profile_policy == "profile_dynamic_count":
+            vec_ind = vec_id // self.access_per_vector
+            this_vec_ind = self.index_trace[batch_idx][table_id][vec_ind]
+            self.counter_arr[0][table_id][this_vec_ind] += 1
+
+        return is_hit, None

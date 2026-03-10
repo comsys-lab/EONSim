@@ -44,7 +44,8 @@ def parse_args():
     parser.add_argument("--num-batches", type=int, default=1)
     parser.add_argument("--output-name", type=int, default=0)
     parser.add_argument("--batch-size", type=int, default=1024)
-    parser.add_argument("--profiling-multiplier", type=int, default=1)
+    # `profiling-period` is the canonical name; keep multiplier alias for backward compatibility.
+    parser.add_argument("--profiling-period", "--profiling-multiplier", dest="profiling_period", type=int, default=1)
     parser.add_argument("--output-filename", type=str, default=None, help="Filename for simulation results (without extension)")
     parser.add_argument("--this-output-dir-file", type=str, default=None, help="Per-run file path to write resolved output directory")
 
@@ -131,7 +132,7 @@ if __name__ == "__main__":
         sim_cfg.n_format_byte,
         vectors_per_table=sim_cfg.vectors_per_table,
         mem_gran=sim_cfg.mem_gran,
-        prof_multiplier=sim_cfg.prof_multiplier,
+        prof_period=sim_cfg.prof_period,
         mem_latency=sim_cfg.mem_latency,
         num_cores=sim_cfg.num_cores,
         onchip_structure=sim_cfg.onchip_structure,
@@ -147,6 +148,7 @@ if __name__ == "__main__":
             "mem_policy": sim_cfg.global_onmem_policy,
             "mem_latency": sim_cfg.global_onmem_latency,
         },
+        index_trace=reqgen.lS_i,
         debug=sim_cfg.debug,
     )
     core_onmem_obj.set_policy(sim_cfg.mem_policy)
