@@ -315,9 +315,6 @@ class CoreOnmem:
                     f"Global on-chip memory (cache) tag bits: {self.cache_tag_bits} bits",
                 ])
 
-        if self.onchip_structure == "two_level":
-            content.append("Note: In two-level structure, local buffer acts as a prefetching buffer.")
-
         print_styled_box("On-Chip Memory Configuration", content)
 
     def print_sim(self):

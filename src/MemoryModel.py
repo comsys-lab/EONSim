@@ -1,127 +1,243 @@
 import os
 import subprocess
 import shutil
-import random
+import math
+import tempfile
 from helper_modules.Helper import print_styled_box
 
 class MemoryModel:
-    def __init__(self, script_dir, offmem_trace, mnpusim_path, mnpusim_config_path, offchip_memory_config, npumem_config, debug=False):
+    def __init__(
+        self,
+        script_dir,
+        offmem_trace,
+        mnpusim_path,
+        mnpusim_config_path,
+        offchip_memory_config,
+        npumem_config,
+        global_bw_bytes_per_cycle=0,
+        global_latency_cycles=0,
+        onchip_structure="global_only",
+        local_onmem_size_kb=0,
+        mem_gran=0,
+        emb_dim=0,
+        n_format_byte=0,
+        debug=False,
+    ):
         print("\n\n\n START OFF-CHIP MEMORY SIMULATION \n")
         
         self.script_dir = script_dir
         self.offmem_trace = offmem_trace
-        self.intermediate_dir = os.path.join(os.path.dirname(script_dir), 'intermediate')
+        self.offmem_trace_last_batch = self._get_last_batch_trace(offmem_trace)
+        self.intermediate_dir = None
         self.mnpusim_path = mnpusim_path
         self.mnpusim_config_path = mnpusim_config_path
         self.offchip_memory_config = offchip_memory_config
         self.npumem_config = npumem_config
-        self.eonsim_results_dir = None  # Will be set in setup_eonsim_results_directory()
-        self.eonsim_results_dir_name = None  # Will store the directory name for mnpusim command
-        self.eonsim_dir_name = "eonsim_config"
-        self.eonsim_config_dir = os.path.join(self.mnpusim_path, self.eonsim_dir_name)
+        self.eonsim_results_dir = None
+        self.eonsim_results_dir_name = None
+        self.eonsim_config_dir = None
+        self.eonsim_dir_name = None
         self.debug = debug
+
+        # Analytical model parameters.
+        self.offchip_issue_width = 1
+        self.global_issue_width = 1
+        self.global_bw_bytes_per_cycle = float(global_bw_bytes_per_cycle) if global_bw_bytes_per_cycle else 0.0
+        self.global_latency_cycles = int(global_latency_cycles) if global_latency_cycles else 0
+        self.onchip_structure = onchip_structure
+        self.local_onmem_size_kb = int(local_onmem_size_kb) if local_onmem_size_kb else 0
+        self.mem_gran = int(mem_gran) if mem_gran else 0
+        self.emb_dim = int(emb_dim) if emb_dim else 0
+        self.n_format_byte = int(n_format_byte) if n_format_byte else 0
 
         # Results
         self.offmem_cycles = 0
+        self.offmem_cycles_raw = 0
+        self.analytical_results = {}
         self.execution_successful = False
+
+    def _get_last_batch_trace(self, offmem_trace):
+        if offmem_trace is None:
+            return []
+        if len(offmem_trace) == 0:
+            return []
+        return offmem_trace[-1]
+
+    def _flatten_last_batch_trace(self):
+        return [addr for table_trace in self.offmem_trace_last_batch for addr in table_trace]
+
+    def _safe_access_per_vector(self):
+        if self.mem_gran <= 0 or self.emb_dim <= 0 or self.n_format_byte <= 0:
+            return 1
+        return max(1, int(math.ceil((self.emb_dim * self.n_format_byte) / self.mem_gran)))
+
+    def _count_trace_types(self):
+        flat_trace = self._flatten_last_batch_trace()
+        # `-1` entries represent accesses satisfied by on-chip memory.
+        # For analytical memory-cycle modeling, global stage is only modeled in `two_level`.
+        onchip_hit_accesses = sum(1 for addr in flat_trace if addr == -1)
+        offchip_accesses = len(flat_trace) - onchip_hit_accesses
+
+        if self.onchip_structure == "two_level":
+            global_to_local_accesses = onchip_hit_accesses
+        else:
+            global_to_local_accesses = 0
+
+        return len(flat_trace), global_to_local_accesses, offchip_accesses
+
+    def _calc_vector_count(self, total_access_count):
+        access_per_vector = self._safe_access_per_vector()
+        if total_access_count <= 0:
+            return 0
+        return int(math.ceil(total_access_count / access_per_vector))
+
+    def _calc_dma_requests(self, access_count):
+        access_per_vector = self._safe_access_per_vector()
+        return int(math.ceil(access_count / access_per_vector)) if access_count > 0 else 0
+
+    def _calc_issue_cycles(self, request_count, issue_width):
+        if request_count <= 0:
+            return 0
+        return int(math.ceil(request_count / max(1, issue_width)))
+
+    def _resolve_chunk_accesses(self):
+        if self.mem_gran <= 0:
+            return 0
+
+        if self.local_onmem_size_kb > 0:
+            half_local_bytes = (self.local_onmem_size_kb * 1024) // 2
+            if half_local_bytes > 0:
+                return max(1, half_local_bytes // self.mem_gran)
+
+        return 0
+
+    def _calc_global_transfer_cycles(self):
+        if self.global_bw_bytes_per_cycle <= 0 or self.mem_gran <= 0:
+            return 0
+
+        flat_trace = self._flatten_last_batch_trace()
+        if not flat_trace:
+            return 0
+
+        chunk_accesses = self._resolve_chunk_accesses()
+        if chunk_accesses <= 0:
+            chunk_accesses = len(flat_trace)
+
+        total_cycles = 0
+        for start in range(0, len(flat_trace), chunk_accesses):
+            chunk = flat_trace[start:start + chunk_accesses]
+            chunk_global_to_local_accesses = sum(1 for addr in chunk if addr == -1)
+            if chunk_global_to_local_accesses == 0:
+                continue
+            chunk_bytes = chunk_global_to_local_accesses * self.mem_gran
+            transfer_cycles = self.global_latency_cycles + int(math.ceil(chunk_bytes / self.global_bw_bytes_per_cycle))
+            total_cycles += transfer_cycles
+
+        return total_cycles
+
+    def _apply_analytical_model(self):
+        total_access_count, global_to_local_accesses, offchip_accesses = self._count_trace_types()
+        total_vector_count = self._calc_vector_count(total_access_count)
+
+        offchip_requests = self._calc_dma_requests(offchip_accesses)
+        global_to_local_requests = self._calc_dma_requests(global_to_local_accesses)
+
+        offchip_issue_cycles = self._calc_issue_cycles(offchip_requests, self.offchip_issue_width)
+        global_to_local_issue_cycles = self._calc_issue_cycles(global_to_local_requests, self.global_issue_width)
+
+        offchip_total_cycles = max(self.offmem_cycles_raw, offchip_issue_cycles)
+
+        global_to_local_transfer_cycles = 0
+        global_to_local_total_cycles = 0
+        if self.onchip_structure == "two_level" and global_to_local_accesses > 0:
+            global_to_local_transfer_cycles = self._calc_global_transfer_cycles()
+            global_to_local_total_cycles = max(global_to_local_issue_cycles, global_to_local_transfer_cycles)
+            # two_level: memory bottleneck is max(off-chip path, global-to-local path)
+            memory_cycles_final = max(offchip_total_cycles, global_to_local_total_cycles)
+        else:
+            # local_only/global_only: memory cycle is off-chip path only.
+            memory_cycles_final = offchip_total_cycles
+
+        self.analytical_results = {
+            "offchip_accesses": offchip_accesses,
+            "total_vector_count": total_vector_count,
+            "global_to_local_accesses": global_to_local_accesses,
+            "offchip_requests": offchip_requests,
+            "global_to_local_requests": global_to_local_requests,
+            "offchip_issue_cycles": offchip_issue_cycles,
+            "global_to_local_issue_cycles": global_to_local_issue_cycles,
+            "offchip_cycles_raw": self.offmem_cycles_raw,
+            "offchip_total_cycles": offchip_total_cycles,
+            "global_to_local_transfer_cycles": global_to_local_transfer_cycles,
+            "global_to_local_total_cycles": global_to_local_total_cycles,
+            "memory_cycles_final": memory_cycles_final,
+        }
+        self.offmem_cycles = memory_cycles_final
         
     def setup_intermediate_directory(self):
-        """Create intermediate directory with unique random number suffix"""
-        base_dir = os.path.dirname(self.intermediate_dir)
-        
-        # Find an unused random number for directory name
-        while True:
-            random_num = random.randint(1, 999999)
-            candidate_dir = os.path.join(base_dir, f'intermediate_{random_num}')
-            if not os.path.exists(candidate_dir):
-                self.intermediate_dir = candidate_dir
-                break
-        
-        os.makedirs(self.intermediate_dir)
+        """Create a unique intermediate directory for this run."""
+        self.intermediate_dir = tempfile.mkdtemp(prefix="intermediate_")
         if self.debug: print(f"[DEBUG] Created intermediate directory: {self.intermediate_dir}")
         
     def setup_eonsim_results_directory(self):
-        """Create eonsim_results directory with unique random number suffix"""
-        # Find an unused random number for directory name
-        while True:
-            random_num = random.randint(1, 999999)
-            candidate_dir_name = f'eonsim_results_{random_num}'
-            candidate_dir = os.path.join(self.mnpusim_path, candidate_dir_name)
-            if not os.path.exists(candidate_dir):
-                self.eonsim_results_dir = candidate_dir
-                self.eonsim_results_dir_name = candidate_dir_name
-                break
+        """Create a unique mNPUsim results directory for this run."""
+        self.eonsim_results_dir = tempfile.mkdtemp(prefix="eonsim_results_", dir=self.mnpusim_path)
+        self.eonsim_results_dir_name = os.path.basename(self.eonsim_results_dir)
         
         if self.debug: print(f"[DEBUG] Created eonsim_results directory name: {self.eonsim_results_dir_name}")
         
     def generate_trace_file(self):
         """Generate flattened trace file for mNPUsim"""
-        # 25.10.09: Only use the last batch for now (offmem_trace[-1])
-        self.offmem_trace = self.offmem_trace[-1]
-        # Flatten the offmem_trace 3D array to 1D array
-        # flat_offmem_trace = [addr for sublist in self.offmem_trace for tbl in sublist for addr in tbl]
-        flat_offmem_trace = [addr for sublist in self.offmem_trace for addr in sublist]
-        
-        # Save flattened trace
+        flat_offmem_trace = self._flatten_last_batch_trace()
         offmem_trace_path = os.path.join(self.intermediate_dir, "offmem_trace_flat.txt")
+        
+        access_per_vector = self._safe_access_per_vector()
+        
         with open(offmem_trace_path, "w") as f:
             f.write("0,")  # Initial dummy value for mNPUsim
-            for addr in flat_offmem_trace:                
-                if not addr == -1:  # Skip -1 entries
-                    f.write(str(addr) + ",")            
-        
+            
+            # Process the trace
+            for i in range(0, len(flat_offmem_trace), access_per_vector):
+                f.write("-1,") # index lookup is pipelined, immediatly fetch the target vector in next cycle
+                                
+                # If the first element is -1, this request goes to the global buffer
+                vector_for_check = flat_offmem_trace[i : i + access_per_vector]
+                if vector_for_check[0] == -1:
+                    f.write("-1,")
+                else:
+                    # If miss, write all addresses for off-chip memory requests
+                    for addr in vector_for_check:
+                        # Fallback for potential partial hits (if applicable)
+                        if addr == -1:
+                            f.write("-1,")
+                        else:
+                            f.write(f"{addr},")
+                            
         if self.debug: print(f"[DEBUG] Generated trace file: {offmem_trace_path}")
-        
-        # Print trace statistics
-        total_elements = len(flat_offmem_trace)
-        minus_one_count = sum(1 for addr in flat_offmem_trace if addr == -1)
-        
-        if self.debug: print(f"[DEBUG] Total elements in offmem_trace: {total_elements}")
-        if self.debug: print(f"[DEBUG] -1 count in offmem_trace: {minus_one_count}")
-        if self.debug: print(f"[DEBUG] -1 ratio in offmem_trace: {minus_one_count/total_elements:.4f}")
         
         return offmem_trace_path
         
-    def cleanup_mnpusim_results(self):
-        """Remove existing mNPUsim results directory"""
-        if os.path.exists(self.eonsim_results_dir):
-            shutil.rmtree(self.eonsim_results_dir)
-            if self.debug: print(f"[DEBUG] Removed existing eonsim_results directory")
-            
     def setup_eonsim_config_directory(self):
-        """Create and setup eonsim_config directory with required config files"""
-        # Create eonsim_config directory if it doesn't exist
-        if not os.path.exists(self.eonsim_config_dir):
-            os.makedirs(self.eonsim_config_dir)
-            if self.debug: print(f"[DEBUG] Created eonsim_config directory: {self.eonsim_config_dir}")
-        
-        # Remove existing dram_config and npumem_config if they exist
+        """Create per-run config dir and symlink static config trees."""
+        self.eonsim_config_dir = tempfile.mkdtemp(prefix="eonsim_config_", dir=self.mnpusim_path)
+        self.eonsim_dir_name = os.path.basename(self.eonsim_config_dir)
+
         dram_config_dest = os.path.join(self.eonsim_config_dir, "dram_config")
         npumem_config_dest = os.path.join(self.eonsim_config_dir, "npumem_config")
-        
-        if os.path.exists(dram_config_dest):
-            shutil.rmtree(dram_config_dest)
-            if self.debug: print(f"[DEBUG] Removed existing dram_config directory")
-            
-        if os.path.exists(npumem_config_dest):
-            shutil.rmtree(npumem_config_dest)
-            if self.debug: print(f"[DEBUG] Removed existing npumem_config directory")
-        
-        # Copy dram_config and npumem_config from mnpusim_config_path
+
         dram_config_src = os.path.join(self.mnpusim_config_path, "dram_config")
         npumem_config_src = os.path.join(self.mnpusim_config_path, "npumem_config")
-        
-        if os.path.exists(dram_config_src):
-            shutil.copytree(dram_config_src, dram_config_dest)
-            if self.debug: print(f"[DEBUG] Copied dram_config from {dram_config_src} to {dram_config_dest}")
-        else:
-            print(f"[WARNING] dram_config source directory not found: {dram_config_src}")
-            
-        if os.path.exists(npumem_config_src):
-            shutil.copytree(npumem_config_src, npumem_config_dest)
-            if self.debug: print(f"[DEBUG] Copied npumem_config from {npumem_config_src} to {npumem_config_dest}")
-        else:
-            print(f"[WARNING] npumem_config source directory not found: {npumem_config_src}")
+
+        if not os.path.exists(dram_config_src):
+            raise FileNotFoundError(f"dram_config source directory not found: {dram_config_src}")
+        if not os.path.exists(npumem_config_src):
+            raise FileNotFoundError(f"npumem_config source directory not found: {npumem_config_src}")
+
+        os.symlink(os.path.abspath(dram_config_src), dram_config_dest)
+        os.symlink(os.path.abspath(npumem_config_src), npumem_config_dest)
+
+        if self.debug: print(f"[DEBUG] Symlinked dram_config: {dram_config_dest} -> {dram_config_src}")
+        if self.debug: print(f"[DEBUG] Symlinked npumem_config: {npumem_config_dest} -> {npumem_config_src}")
         
     def execute_mnpusim(self, trace_file_path):
         """Execute mNPUsim with proper environment setup"""
@@ -220,8 +336,8 @@ class MemoryModel:
                     execution_cycle_file = os.path.join(result_dest_dir, filename)
                     try:
                         with open(execution_cycle_file, 'r') as f:
-                            self.offmem_cycles = int(f.readline().strip())
-                            if self.debug: print(f"[DEBUG] mNPUsim cycles: {self.offmem_cycles}")
+                            self.offmem_cycles_raw = int(f.readline().strip())
+                            if self.debug: print(f"[DEBUG] mNPUsim cycles: {self.offmem_cycles_raw}")
                             break
                     except (ValueError, IOError) as e:
                         print(f"[ERROR] Failed to read execution cycles from {filename}: {e}")
@@ -229,11 +345,10 @@ class MemoryModel:
                 print("[WARNING] No execution_cycle file found in result directory")
         else:
             print(f"[WARNING] Result directory not found: {result_source_dir}")
-            
-        # get the number of "-1" in offmem_trace for "onmem_elems"
-        onmem_elems = sum(1 for sublist in self.offmem_trace for addr in sublist if addr == -1)
-        # Add len(self.offmem_trace)/1024 to offmem_cycles (for loop overhead)
-        self.offmem_cycles += (len(self.offmem_trace) // 1024) * 41  # Assuming 20 cycles latency
+
+        # Keep legacy loop-overhead correction on raw mNPUsim cycles.
+        # self.offmem_cycles_raw += (len(self.offmem_trace_last_batch) // 1024) * 41
+        self._apply_analytical_model()
     
     def cleanup_intermediate_directory(self):
         """Remove the intermediate directory after simulation"""
@@ -246,6 +361,12 @@ class MemoryModel:
         if os.path.exists(self.eonsim_results_dir):
             shutil.rmtree(self.eonsim_results_dir)
             if self.debug: print(f"[DEBUG] Cleaned up eonsim_results directory: {self.eonsim_results_dir}")
+
+    def cleanup_eonsim_config_directory(self):
+        """Remove the per-run eonsim_config directory after simulation."""
+        if self.eonsim_config_dir and os.path.exists(self.eonsim_config_dir):
+            shutil.rmtree(self.eonsim_config_dir)
+            if self.debug: print(f"[DEBUG] Cleaned up eonsim_config directory: {self.eonsim_config_dir}")
             
     def do_memory_simulation(self):
         """Main method to run the complete memory simulation pipeline"""
@@ -258,7 +379,6 @@ class MemoryModel:
         self.setup_eonsim_results_directory()  # Setup results directory with random suffix
         self.setup_eonsim_config_directory()
         trace_file_path = self.generate_trace_file()
-        self.cleanup_mnpusim_results()
         
         # Execute mNPUsim
         self.execute_mnpusim(trace_file_path)
@@ -271,6 +391,7 @@ class MemoryModel:
         # Cleanup directories after simulation
         self.cleanup_intermediate_directory()
         self.cleanup_eonsim_results_directory()  # Cleanup results directory
+        self.cleanup_eonsim_config_directory()  # Cleanup per-run config directory
         
     def print_stats(self):
         """Print memory simulation results"""
@@ -278,6 +399,14 @@ class MemoryModel:
         
         if self.execution_successful:
             content_lines.append(f"Memory Cycles: {self.offmem_cycles}")
+            if self.debug and self.analytical_results:
+                content_lines.append(f"Off-chip Issue Cycles: {self.analytical_results['offchip_issue_cycles']}")
+                content_lines.append(f"Off-chip Transfer Cycles: {self.offmem_cycles_raw}")
+                content_lines.append(f"Off-chip Total Cycles: {self.analytical_results['offchip_total_cycles']}")
+                if self.onchip_structure == "two_level":
+                    content_lines.append(f"Global-to-Local Issue Cycles: {self.analytical_results['global_to_local_issue_cycles']}")
+                    content_lines.append(f"Global-to-Local Transfer Cycles: {self.analytical_results['global_to_local_transfer_cycles']}")
+                    content_lines.append(f"Global-to-Local Total Cycles: {self.analytical_results['global_to_local_total_cycles']}")
             # content_lines.append(f"Simulation Status: Successful")
         else:
             # content_lines.append("Simulation Status: Failed")

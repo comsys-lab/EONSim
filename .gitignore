@@ -6,13 +6,15 @@ src/__pycache__
 ### Temporal or Ongoing Codes
 src/ongoing_cpp
 src/test_lru_cache.py
-
+src/MemoryModel_0311_2328.py
+src/MemoryModel_backup.py
 
 ### Temporal Scripts
 dlrm_validation_batches.sh
 dlrm_validation_tables.sh
 validation_output_gather.sh
 validation_output_gather_tables.sh
+run_sim_test.sh
 
 ### Temporal Results
 offmem_trace.txt
@@ -46,4 +48,7 @@ datasets/vectordb/trivia_seq_100m.txt
 
 ### temp
 EONSIM_IMPLEMENTATION.md
+PERF_MODEL_IMPLEMENTATION.md
 tools/mNPUsim/mnpusim
+workload_configs/vdb.yaml
+configs/cache_OPT_twolevel.yaml

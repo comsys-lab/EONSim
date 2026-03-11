@@ -25,6 +25,8 @@ class SimConfig:
     script_dir: str
     offchip_memory_config: str
     npumem_config: str
+    global_bandwidth_bytes_per_cycle: float
+    global_access_latency_cycles: int
     mnpusim_path: str
     mnpusim_config_path: str
     matrix_config_path: str
@@ -44,6 +46,12 @@ class SimConfig:
     mem_latency: int
     cache_config: dict
     num_cores: int
+    workload_type: str
+    vector_lanes: int
+    vector_sublanes: int
+    vector_alus_per_sublanes: int
+    mxu_dimension: int
+    num_mxus: int
     output_filename: str
 
 
@@ -140,6 +148,8 @@ def build_sim_config(args):
     gen_conf = cfg_loader.get_general_config()
     matrix_ops_csv_path = cfg_loader.get_matrix_ops_config_path()
 
+    workload_type = "dlrm" if "dlrm" in args.workload_config.lower() else "unknown"
+
     emb_dim = emb_conf['embedding_dim']
     embsize = emb_conf['emb_size_str']
     num_indices_per_lookup = emb_conf['pooling_factor']
@@ -162,6 +172,15 @@ def build_sim_config(args):
     if not isinstance(args.profiling_period, int) or args.profiling_period <= 0:
         raise ValueError(
             f"Invalid '--profiling-period': expected positive integer, got {args.profiling_period}"
+        )
+
+    if args.global_bandwidth_bytes_per_cycle < 0:
+        raise ValueError(
+            "Invalid '--global-bandwidth-bytes-per-cycle': expected non-negative value"
+        )
+    if args.global_access_latency_cycles < 0:
+        raise ValueError(
+            "Invalid '--global-access-latency-cycles': expected non-negative integer"
         )
 
     output_dir = Helper.build_output_dir(
@@ -293,6 +312,8 @@ def build_sim_config(args):
         script_dir=script_dir,
         offchip_memory_config=offchip_memory_config,
         npumem_config=npumem_config,
+        global_bandwidth_bytes_per_cycle=args.global_bandwidth_bytes_per_cycle,
+        global_access_latency_cycles=args.global_access_latency_cycles,
         mnpusim_path=mnpusim_path,
         mnpusim_config_path=mnpusim_config_path,
         matrix_config_path=matrix_config_path,
@@ -312,5 +333,11 @@ def build_sim_config(args):
         mem_latency=mem_latency,
         cache_config=cache_config,
         num_cores=num_cores,
+        workload_type=workload_type,
+        vector_lanes=vector_lanes,
+        vector_sublanes=vector_sublanes,
+        vector_alus_per_sublanes=vector_alus_per_sublanes,
+        mxu_dimension=mxu_dimension,
+        num_mxus=num_mxus,
         output_filename=args.output_filename,
     )

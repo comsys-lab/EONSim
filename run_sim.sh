@@ -16,18 +16,18 @@ workload="dlrm_dcnv2"
 WORKLOAD_CONFIG="${workload_path_dir}${workload}"
 
 data_path_dir="$(pwd)/datasets/"
-dataset_list=("dlrm/reuse_high_test.txt") # "dlrm/reuse_high_test.txt" "dlrm/reuse_low_trunc.txt"
+dataset_list=("dlrm/reuse_high_test.txt") # "dlrm/reuse_high_test.txt" "dlrm/reuse_medium_test.txt" "dlrm/reuse_low_trunc.txt"
 ###############
 
 ### simulation parameters ###
 MEM_CFG=$1
 MATRIX_CFG="tpuv6e.cfg"
 
-NUM_BATCH=3
+NUM_BATCH=1
 BS=256
 
 # Set PROF_PERIOD to $2 if provided, otherwise default to 1.
-# This parameter is to set the profile period for profiling-based policies. For non-profiling policies, this parameter will be ignored.
+# This parameter is to set the profile period for profiling-based policies. For the other policies, this parameter will be ignored.
 # For profile_dynamic_* policies, this is the batch-period for profiling refresh:
 #   1 -> refresh every batch, 2 -> every 2 batches, N -> every N batches.
 # Example: ./run_sim.sh profile_dcache 4

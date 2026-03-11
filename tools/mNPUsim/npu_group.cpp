@@ -185,7 +185,6 @@ void npu_group::dram_load_write_sequential(ifstream *file_stream, bool is_write,
 	// Skip empty lines or lines with only whitespace/commas
 	if(!file_stream->eof() && !str_buf_mem.empty())
 	{
-		// Check if line contains only commas and whitespace
 		bool has_valid_content = false;
 		for(char c : str_buf_mem) {
 			if(c != ',' && c != ' ' && c != '\t' && c != '\r' && c != '\n') {
@@ -195,41 +194,56 @@ void npu_group::dram_load_write_sequential(ifstream *file_stream, bool is_write,
 		}
 		
 		if(!has_valid_content) {
-			return; // Skip lines with only separators
+			return;
 		}
 		
 		int base = 0;
-		for(int i=0;i<str_buf_mem.length();i++)
-		{
-			if(str_buf_mem.substr(i, 1)==string(","))
-			{
-				string addr_str = str_buf_mem.substr(base, i-base);
-				if (!addr_str.empty()) {
-					try {
-						// Create individual request for each address
-						map<uint64_t, int> single_request;
-						single_request.insert({stoull(addr_str), memctrl->getWordSize(npu_idx)});
-						memctrl->dramRequest(&single_request, is_write, npu_idx);
-					} catch (const std::exception& e) {
-						cout << "Error parsing address: " << addr_str << " - " << e.what() << endl;
-					}
-				}
-				base = i+1;
-			}
-		}
-		// Handle last address after final comma
-		if (base < str_buf_mem.length()) {
-			string addr_str = str_buf_mem.substr(base);
+		uint64_t delay_cycles = 0;
+
+		auto process_addr = [&](const string& addr_str) {
 			if (!addr_str.empty()) {
 				try {
-					// Create individual request for last address
-					map<uint64_t, int> single_request;
-					single_request.insert({stoull(addr_str), memctrl->getWordSize(npu_idx)});
-					memctrl->dramRequest(&single_request, is_write, npu_idx);
+					uint64_t parsed_addr = stoull(addr_str);
+					
+					// Every request (both hit and miss) consumes 1 issue cycle
+					delay_cycles++;
+					
+					// If miss, send request to DRAM after applying accumulated delay
+					if (parsed_addr != (uint64_t)-1) {
+						npus[npu_idx]->compute_cycle += delay_cycles;
+						mem_sync(npu_idx);
+						delay_cycles = 0; // Reset delay after synchronization
+						
+						map<uint64_t, int> single_request;
+						single_request.insert({parsed_addr, memctrl->getWordSize(npu_idx)});
+						memctrl->dramRequest(&single_request, is_write, npu_idx);
+					}
 				} catch (const std::exception& e) {
 					cout << "Error parsing address: " << addr_str << " - " << e.what() << endl;
 				}
 			}
+		};
+
+		for(int i=0; i<str_buf_mem.length(); i++)
+		{
+			if(str_buf_mem.substr(i, 1) == string(","))
+			{
+				string addr_str = str_buf_mem.substr(base, i-base);
+				process_addr(addr_str);
+				base = i+1;
+			}
+		}
+		
+		// Handle last address after final comma
+		if (base < str_buf_mem.length()) {
+			string addr_str = str_buf_mem.substr(base);
+			process_addr(addr_str);
+		}
+
+		// Apply any remaining cycles at the end of the trace line
+		if (delay_cycles > 0) {
+			npus[npu_idx]->compute_cycle += delay_cycles;
+			mem_sync(npu_idx);
 		}
 	}
 }
@@ -245,10 +259,8 @@ void npu_group::dram_load_write(ifstream *file_stream, map<uint64_t, int> *mem_b
 	str_buf_mem.erase(remove(str_buf_mem.begin(), str_buf_mem.end(), ' '), str_buf_mem.end());
 	str_buf_mem.erase(remove(str_buf_mem.begin(), str_buf_mem.end(), '\n'), str_buf_mem.end());
 
-	// Skip empty lines or lines with only whitespace/commas
 	if(!file_stream->eof() && !str_buf_mem.empty())
 	{
-		// Check if line contains only commas and whitespace
 		bool has_valid_content = false;
 		for(char c : str_buf_mem) {
 			if(c != ',' && c != ' ' && c != '\t' && c != '\r' && c != '\n') {
@@ -258,17 +270,20 @@ void npu_group::dram_load_write(ifstream *file_stream, map<uint64_t, int> *mem_b
 		}
 		
 		if(!has_valid_content) {
-			return; // Skip lines with only separators
+			return; 
 		}
 		int base = 0;
-		for(int i=0;i<str_buf_mem.length();i++)
+		for(int i=0; i<str_buf_mem.length(); i++)
 		{
-			if(str_buf_mem.substr(i, 1)==string(","))
+			if(str_buf_mem.substr(i, 1) == string(","))
 			{
 				string addr_str = str_buf_mem.substr(base, i-base);
 				if (!addr_str.empty()) {
 					try {
-						mem_buffer->insert({stoull(addr_str), memctrl->getWordSize(npu_idx)});
+						uint64_t parsed_addr = stoull(addr_str);
+						if (parsed_addr != (uint64_t)-1) {
+							mem_buffer->insert({parsed_addr, memctrl->getWordSize(npu_idx)});
+						}
 					} catch (const std::exception& e) {
 						cout << "Error parsing address: " << addr_str << " - " << e.what() << endl;
 					}
@@ -276,21 +291,142 @@ void npu_group::dram_load_write(ifstream *file_stream, map<uint64_t, int> *mem_b
 				base = i+1;
 			}
 		}
-		// Handle last address after final comma
 		if (base < str_buf_mem.length()) {
 			string addr_str = str_buf_mem.substr(base);
 			if (!addr_str.empty()) {
 				try {
-					mem_buffer->insert({stoull(addr_str), memctrl->getWordSize(npu_idx)});
+					uint64_t parsed_addr = stoull(addr_str);
+					if (parsed_addr != (uint64_t)-1) {
+						mem_buffer->insert({parsed_addr, memctrl->getWordSize(npu_idx)});
+					}
 				} catch (const std::exception& e) {
 					cout << "Error parsing address: " << addr_str << " - " << e.what() << endl;
 				}
 			}
 		}
 	}
-	// If EOF or empty line, just return without error
-	// This allows graceful handling of empty lines and end of file
 }
+
+// //--------------------------------------------------
+// // name: npu_group::dram_load_write_sequential
+// // usage: process addresses sequentially without map (preserves order and duplicates)
+// // -------------------------------------------------
+// void npu_group::dram_load_write_sequential(ifstream *file_stream, bool is_write, int npu_idx)
+// {
+// 	string str_buf_mem;
+// 	getline(*file_stream, str_buf_mem, '\n');
+// 	str_buf_mem.erase(remove(str_buf_mem.begin(), str_buf_mem.end(), ' '), str_buf_mem.end());
+// 	str_buf_mem.erase(remove(str_buf_mem.begin(), str_buf_mem.end(), '\n'), str_buf_mem.end());
+
+// 	// Skip empty lines or lines with only whitespace/commas
+// 	if(!file_stream->eof() && !str_buf_mem.empty())
+// 	{
+// 		// Check if line contains only commas and whitespace
+// 		bool has_valid_content = false;
+// 		for(char c : str_buf_mem) {
+// 			if(c != ',' && c != ' ' && c != '\t' && c != '\r' && c != '\n') {
+// 				has_valid_content = true;
+// 				break;
+// 			}
+// 		}
+		
+// 		if(!has_valid_content) {
+// 			return; // Skip lines with only separators
+// 		}
+		
+// 		int base = 0;
+// 		for(int i=0;i<str_buf_mem.length();i++)
+// 		{
+// 			if(str_buf_mem.substr(i, 1)==string(","))
+// 			{
+// 				string addr_str = str_buf_mem.substr(base, i-base);
+// 				if (!addr_str.empty()) {
+// 					try {
+// 						// Create individual request for each address
+// 						map<uint64_t, int> single_request;
+// 						single_request.insert({stoull(addr_str), memctrl->getWordSize(npu_idx)});
+// 						memctrl->dramRequest(&single_request, is_write, npu_idx);
+// 					} catch (const std::exception& e) {
+// 						cout << "Error parsing address: " << addr_str << " - " << e.what() << endl;
+// 					}
+// 				}
+// 				base = i+1;
+// 			}
+// 		}
+// 		// Handle last address after final comma
+// 		if (base < str_buf_mem.length()) {
+// 			string addr_str = str_buf_mem.substr(base);
+// 			if (!addr_str.empty()) {
+// 				try {
+// 					// Create individual request for last address
+// 					map<uint64_t, int> single_request;
+// 					single_request.insert({stoull(addr_str), memctrl->getWordSize(npu_idx)});
+// 					memctrl->dramRequest(&single_request, is_write, npu_idx);
+// 				} catch (const std::exception& e) {
+// 					cout << "Error parsing address: " << addr_str << " - " << e.what() << endl;
+// 				}
+// 			}
+// 		}
+// 	}
+// }
+
+// //--------------------------------------------------
+// // name: npu_group::dram_load_write
+// // usage: insert buffer element [map; (addr, size)]
+// // -------------------------------------------------
+// void npu_group::dram_load_write(ifstream *file_stream, map<uint64_t, int> *mem_buffer, int npu_idx)
+// {
+// 	string str_buf_mem;
+// 	getline(*file_stream, str_buf_mem, '\n');
+// 	str_buf_mem.erase(remove(str_buf_mem.begin(), str_buf_mem.end(), ' '), str_buf_mem.end());
+// 	str_buf_mem.erase(remove(str_buf_mem.begin(), str_buf_mem.end(), '\n'), str_buf_mem.end());
+
+// 	// Skip empty lines or lines with only whitespace/commas
+// 	if(!file_stream->eof() && !str_buf_mem.empty())
+// 	{
+// 		// Check if line contains only commas and whitespace
+// 		bool has_valid_content = false;
+// 		for(char c : str_buf_mem) {
+// 			if(c != ',' && c != ' ' && c != '\t' && c != '\r' && c != '\n') {
+// 				has_valid_content = true;
+// 				break;
+// 			}
+// 		}
+		
+// 		if(!has_valid_content) {
+// 			return; // Skip lines with only separators
+// 		}
+// 		int base = 0;
+// 		for(int i=0;i<str_buf_mem.length();i++)
+// 		{
+// 			if(str_buf_mem.substr(i, 1)==string(","))
+// 			{
+// 				string addr_str = str_buf_mem.substr(base, i-base);
+// 				if (!addr_str.empty()) {
+// 					try {
+// 						mem_buffer->insert({stoull(addr_str), memctrl->getWordSize(npu_idx)});
+// 					} catch (const std::exception& e) {
+// 						cout << "Error parsing address: " << addr_str << " - " << e.what() << endl;
+// 					}
+// 				}
+// 				base = i+1;
+// 			}
+// 		}
+// 		// Handle last address after final comma
+// 		if (base < str_buf_mem.length()) {
+// 			string addr_str = str_buf_mem.substr(base);
+// 			if (!addr_str.empty()) {
+// 				try {
+// 					mem_buffer->insert({stoull(addr_str), memctrl->getWordSize(npu_idx)});
+// 				} catch (const std::exception& e) {
+// 					cout << "Error parsing address: " << addr_str << " - " << e.what() << endl;
+// 				}
+// 			}
+// 		}
+// 	}
+// 	// If EOF or empty line, just return without error
+// 	// This allows graceful handling of empty lines and end of file
+// }
 
 //--------------------------------------------------
 // name: npu_group::dram_buffer_string

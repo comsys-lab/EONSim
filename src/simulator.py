@@ -1,9 +1,8 @@
 from helper_modules.Helper import Helper, print_styled_box
 from ReqGenerator import ReqGenerator
 from CoreOnmem_multicore import CoreOnmem
-# from MemProfile import MemProfile
 # from helper_modules.EnergyEstimator import EnergyEstimator
-# from RuntimeModel import RuntimeModel
+from RuntimeModel import RuntimeModel
 from MemoryModel import MemoryModel
 from helper_modules.ConfigBuilder import build_sim_config
 from matrix_ops_sim.matrix_simulation import run_matrix_simulation
@@ -58,6 +57,10 @@ def parse_args():
     # mNPUsim related parameters
     parser.add_argument("--offchip-memory-config", type=str, default="dram_config/total_dram_config/single_hbm3_819gbs.cfg")
     parser.add_argument("--npumem-config", type=str, default="npumem_config/npumem_architecture_list/tpuv6e.txt")
+
+    # Analytical memory-model parameters.
+    parser.add_argument("--global-bandwidth-bytes-per-cycle", type=float, default=2000.0)
+    parser.add_argument("--global-access-latency-cycles", type=int, default=21)
 
     # debug flag
     parser.add_argument("--debug", action="store_true", default=False, help="Enable debug prints")
@@ -173,18 +176,25 @@ if __name__ == "__main__":
     ### Off-chip Memory Simulation using mNPUsim ###
     ####################################################
     
-    # helper.set_timer()
-    # memory_model = MemoryModel(
-    #     sim_cfg.script_dir,
-    #     core_onmem_obj.offmem_trace,
-    #     sim_cfg.mnpusim_path,
-    #     sim_cfg.mnpusim_config_path,
-    #     sim_cfg.offchip_memory_config,
-    #     sim_cfg.npumem_config,
-    #     debug=sim_cfg.debug,
-    # )
-    # memory_model.do_memory_simulation()
-    # helper.end_timer("off-chip memory simulation")
+    helper.set_timer()
+    memory_model = MemoryModel(
+        sim_cfg.script_dir,
+        core_onmem_obj.offmem_trace,
+        sim_cfg.mnpusim_path,
+        sim_cfg.mnpusim_config_path,
+        sim_cfg.offchip_memory_config,
+        sim_cfg.npumem_config,
+        global_bw_bytes_per_cycle=sim_cfg.global_bandwidth_bytes_per_cycle,
+        global_latency_cycles=sim_cfg.global_access_latency_cycles,
+        onchip_structure=sim_cfg.onchip_structure,
+        local_onmem_size_kb=sim_cfg.local_onmem_size,
+        mem_gran=sim_cfg.mem_gran,
+        emb_dim=sim_cfg.emb_dim,
+        n_format_byte=sim_cfg.n_format_byte,
+        debug=sim_cfg.debug,
+    )
+    memory_model.do_memory_simulation()
+    helper.end_timer("off-chip memory simulation")
     
     #-------------------------------------------------------------------
     
@@ -192,30 +202,32 @@ if __name__ == "__main__":
     ### Computation Time Calculation ### (TODO: integrate memory simulation results to calculate the total runtime more accurately)
     ####################################
     
-    # helper.set_timer()
-    # compute_time = RuntimeModel(
-    #     workload_type,
-    #     emb_dim,
-    #     num_tables,
-    #     bsz,
-    #     num_indices_per_lookup,
-    #     vector_lanes,
-    #     vector_sublanes,
-    #     vector_alus_per_sublanes,
-    #     mxu_dimension,
-    #     num_mxus,
-    #     onchip_config={
-    #         "onchip_structure": sim_cfg.onchip_structure,
-    #         "local_onmem_size": sim_cfg.local_onmem_size,
-    #         "local_onmem_latency": sim_cfg.local_onmem_latency,
-    #         "global_onmem_size": sim_cfg.global_onmem_size,
-    #         "global_onmem_latency": sim_cfg.global_onmem_latency,
-    #         "onmem_type": sim_cfg.mem_type,
-    #         "onmem_policy": sim_cfg.mem_policy,
-    #     },
-    # )
-    # compute_time.do_runtime_calculation()
-    # helper.end_timer("do execution time calculation")
+    helper.set_timer()
+    compute_time = RuntimeModel(
+        sim_cfg.workload_type,
+        sim_cfg.emb_dim,
+        sim_cfg.num_tables,
+        sim_cfg.bsz,
+        sim_cfg.num_indices_per_lookup,
+        sim_cfg.n_format_byte,
+        sim_cfg.vector_lanes,
+        sim_cfg.vector_sublanes,
+        sim_cfg.vector_alus_per_sublanes,
+        sim_cfg.mxu_dimension,
+        sim_cfg.num_mxus,
+        onchip_config={
+            "onchip_structure": sim_cfg.onchip_structure,
+            "local_onmem_size": sim_cfg.local_onmem_size,
+            "local_onmem_latency": sim_cfg.local_onmem_latency,
+            "global_onmem_size": sim_cfg.global_onmem_size,
+            "global_onmem_latency": sim_cfg.global_onmem_latency,
+            "onmem_type": sim_cfg.mem_type,
+            "onmem_policy": sim_cfg.mem_policy,
+        },
+        debug=sim_cfg.debug,
+    )
+    compute_time.do_runtime_calculation()
+    helper.end_timer("do execution time calculation")
     
     #-------------------------------------------------------------------
     
