@@ -31,14 +31,18 @@ def _process_batch_worker(args):
     
     # Process this batch
     for nt in range(table_count):
+        vector_bytes = emb_dim * n_format_byte
+        # Align each vector footprint to mem_gran.
+        vector_stride = ((vector_bytes + mem_gran - 1) // mem_gran) * mem_gran
+        table_base = nt * rows_per_table * vector_stride
+
         for vec in range(len(batch_data[nt])):
+            row_base = int(batch_data[nt][vec]) * vector_stride
+
             for dim in range(access_per_vector):
-                bytes_per_vec = (emb_dim * n_format_byte - 1).bit_length()
-                tbl_bits = nt << int(np.log2(rows_per_table-1)+1 + bytes_per_vec)                            
-                vec_idx = batch_data[nt][vec] << bytes_per_vec
-                dim_bits = mem_gran * dim
-                this_addr = tbl_bits + vec_idx + dim_bits
-                
+                dim_offset = mem_gran * dim
+                this_addr = table_base + row_base + dim_offset
+
                 batch_addr_trace[nt][vec * access_per_vector + dim] = this_addr
                 
     return batch_addr_trace
