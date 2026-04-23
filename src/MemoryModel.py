@@ -23,11 +23,9 @@ class MemoryModel:
         n_format_byte=0,
         debug=False,
     ):
-        print("\n\n\n START OFF-CHIP MEMORY SIMULATION \n")
-        
+        # offmem_trace: single-batch trace, i.e. list of per-table address arrays.
         self.script_dir = script_dir
         self.offmem_trace = offmem_trace
-        self.offmem_trace_last_batch = self._get_last_batch_trace(offmem_trace)
         self.intermediate_dir = None
         self.mnpusim_path = mnpusim_path
         self.mnpusim_config_path = mnpusim_config_path
@@ -56,15 +54,11 @@ class MemoryModel:
         self.analytical_results = {}
         self.execution_successful = False
 
-    def _get_last_batch_trace(self, offmem_trace):
-        if offmem_trace is None:
+    def _flatten_batch_trace(self):
+        # Flatten single-batch trace (list of per-table arrays) into a single address list.
+        if not self.offmem_trace:
             return []
-        if len(offmem_trace) == 0:
-            return []
-        return offmem_trace[-1]
-
-    def _flatten_last_batch_trace(self):
-        return [addr for table_trace in self.offmem_trace_last_batch for addr in table_trace]
+        return [addr for table_trace in self.offmem_trace for addr in table_trace]
 
     def _safe_access_per_vector(self):
         if self.mem_gran <= 0 or self.emb_dim <= 0 or self.n_format_byte <= 0:
@@ -72,7 +66,7 @@ class MemoryModel:
         return max(1, int(math.ceil((self.emb_dim * self.n_format_byte) / self.mem_gran)))
 
     def _count_trace_types(self):
-        flat_trace = self._flatten_last_batch_trace()
+        flat_trace = self._flatten_batch_trace()
         # `-1` entries represent accesses satisfied by on-chip memory.
         # For analytical memory-cycle modeling, global stage is only modeled in `two_level`.
         onchip_hit_accesses = sum(1 for addr in flat_trace if addr == -1)
@@ -115,7 +109,7 @@ class MemoryModel:
         if self.global_bw_bytes_per_cycle <= 0 or self.mem_gran <= 0:
             return 0
 
-        flat_trace = self._flatten_last_batch_trace()
+        flat_trace = self._flatten_batch_trace()
         if not flat_trace:
             return 0
 
@@ -188,7 +182,7 @@ class MemoryModel:
         
     def generate_trace_file(self):
         """Generate flattened trace file for mNPUsim"""
-        flat_offmem_trace = self._flatten_last_batch_trace()
+        flat_offmem_trace = self._flatten_batch_trace()
         offmem_trace_path = os.path.join(self.intermediate_dir, "offmem_trace_flat.txt")
         
         access_per_vector = self._safe_access_per_vector()
@@ -384,22 +378,22 @@ class MemoryModel:
             # Execute mNPUsim
             self.execute_mnpusim(trace_file_path)
 
-            # Extract results
+            # Extract results and apply analytical model.
             self.extract_results()
-
-            self.print_stats()
         finally:
             # Always cleanup temporary artifacts even when an exception occurs.
             self.cleanup_intermediate_directory()
             self.cleanup_eonsim_results_directory()  # Cleanup results directory
             self.cleanup_eonsim_config_directory()  # Cleanup per-run config directory
         
-    def print_stats(self):
-        """Print memory simulation results"""
+    def print_stats(self, batch_idx=None):
+        """Print memory simulation results for one batch."""
         content_lines = []
-        
+
+        label = f"[Batch {batch_idx}] " if batch_idx is not None else ""
+
         if self.execution_successful:
-            content_lines.append(f"Memory Cycles: {self.offmem_cycles}")
+            content_lines.append(f"{label}Memory Cycles: {self.offmem_cycles}")
             if self.debug and self.analytical_results:
                 content_lines.append(f"Off-chip Issue Cycles: {self.analytical_results['offchip_issue_cycles']}")
                 content_lines.append(f"Off-chip Transfer Cycles: {self.offmem_cycles_raw}")
@@ -408,11 +402,28 @@ class MemoryModel:
                     content_lines.append(f"Global-to-Local Issue Cycles: {self.analytical_results['global_to_local_issue_cycles']}")
                     content_lines.append(f"Global-to-Local Transfer Cycles: {self.analytical_results['global_to_local_transfer_cycles']}")
                     content_lines.append(f"Global-to-Local Total Cycles: {self.analytical_results['global_to_local_total_cycles']}")
-            # content_lines.append(f"Simulation Status: Successful")
         else:
-            # content_lines.append("Simulation Status: Failed")
-            content_lines.append("Memory Cycles: N/A")
-            
-        # content_lines.append(f"Results Directory: {self.intermediate_dir}")
-        
+            content_lines.append(f"{label}Memory Cycles: N/A")
+
         print_styled_box("Memory Simulation Results", content_lines)
+
+    @staticmethod
+    def print_aggregate_stats(batch_model_pairs):
+        """Print average then per-batch memory cycle summary.
+
+        Args:
+            batch_model_pairs: list of (batch_idx, MemoryModel) for non-warmup batches.
+        """
+        valid = [(nb, model.offmem_cycles) for nb, model in batch_model_pairs if model.execution_successful]
+        if not valid:
+            print("[WARNING] No successful memory simulation results to aggregate.")
+            return
+
+        avg_cycles = sum(c for _, c in valid) / len(valid)
+        content = [
+            f"Average Memory Cycles: {avg_cycles:.1f}",
+            "----------------------------------------",
+        ]
+        for nb, cycles in valid:
+            content.append(f"[Batch {nb}] Memory Cycles: {cycles}")
+        print_styled_box("Memory Simulation Summary", content)

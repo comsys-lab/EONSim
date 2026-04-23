@@ -44,6 +44,7 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=1024)
     # `profiling-period` is the canonical name; keep multiplier alias for backward compatibility.
     parser.add_argument("--profiling-period", "--profiling-multiplier", dest="profiling_period", type=int, default=1)
+    parser.add_argument("--warmup-batches", type=int, default=0, help="Number of leading batches excluded from memory/runtime simulation")
     parser.add_argument("--output-filename", type=str, default=None, help="Filename for simulation results (without extension)")
     parser.add_argument("--this-output-dir-file", type=str, default=None, help="Per-run file path to write resolved output directory")
 
@@ -174,25 +175,42 @@ if __name__ == "__main__":
     ####################################################
     ### Off-chip Memory Simulation using mNPUsim ###
     ####################################################
-    
+
+    # Per-batch memory simulation; warmup batches are skipped entirely.
+    offmem_trace = core_onmem_obj.offmem_trace
+    warmup_batches = sim_cfg.warmup_batches
+    nbatches = sim_cfg.nbatches
+
+    print("\n\n\n START OFF-CHIP MEMORY SIMULATION \n")
     helper.set_timer()
-    memory_model = MemoryModel(
-        sim_cfg.script_dir,
-        core_onmem_obj.offmem_trace,
-        sim_cfg.mnpusim_path,
-        sim_cfg.mnpusim_config_path,
-        sim_cfg.offchip_memory_config,
-        sim_cfg.npumem_config,
-        global_bw_bytes_per_cycle=sim_cfg.global_bandwidth_bytes_per_cycle,
-        global_latency_cycles=sim_cfg.global_access_latency_cycles,
-        onchip_structure=sim_cfg.onchip_structure,
-        local_onmem_size_kb=sim_cfg.local_onmem_size,
-        mem_gran=sim_cfg.mem_gran,
-        emb_dim=sim_cfg.emb_dim,
-        n_format_byte=sim_cfg.n_format_byte,
-        debug=sim_cfg.debug,
-    )
-    memory_model.do_memory_simulation()
+
+    per_batch_memory_models = []   # (batch_idx, MemoryModel) for non-warmup batches
+    for nb in range(nbatches):
+        if nb < warmup_batches:
+            print(f"[INFO] Batch {nb}: warmup — skipping memory simulation.")
+            continue
+
+        memory_model = MemoryModel(
+            sim_cfg.script_dir,
+            offmem_trace[nb],          # single-batch trace slice
+            sim_cfg.mnpusim_path,
+            sim_cfg.mnpusim_config_path,
+            sim_cfg.offchip_memory_config,
+            sim_cfg.npumem_config,
+            global_bw_bytes_per_cycle=sim_cfg.global_bandwidth_bytes_per_cycle,
+            global_latency_cycles=sim_cfg.global_access_latency_cycles,
+            onchip_structure=sim_cfg.onchip_structure,
+            local_onmem_size_kb=sim_cfg.local_onmem_size,
+            mem_gran=sim_cfg.mem_gran,
+            emb_dim=sim_cfg.emb_dim,
+            n_format_byte=sim_cfg.n_format_byte,
+            debug=sim_cfg.debug,
+        )
+        memory_model.do_memory_simulation()
+        per_batch_memory_models.append((nb, memory_model))
+
+    MemoryModel.print_aggregate_stats(per_batch_memory_models)
+
     helper.end_timer("off-chip memory simulation")
     
     #-------------------------------------------------------------------
@@ -200,7 +218,7 @@ if __name__ == "__main__":
     ####################################
     ### Computation Time Calculation ### (TODO: integrate memory simulation results to calculate the total runtime more accurately)
     ####################################
-    
+
     helper.set_timer()
     compute_time = RuntimeModel(
         sim_cfg.workload_type,

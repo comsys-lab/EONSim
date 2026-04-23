@@ -53,6 +53,7 @@ class SimConfig:
     mxu_dimension: int
     num_mxus: int
     output_filename: str
+    warmup_batches: int
 
 
 def _ensure_positive_int(value, name):
@@ -168,6 +169,13 @@ def build_sim_config(args):
     n_format_byte = int(np.ceil(n_format_bits / 8))
 
     nbatches = args.num_batches
+    warmup_batches = getattr(args, 'warmup_batches', 0)
+    if warmup_batches < 0:
+        raise ValueError(f"Invalid '--warmup-batches': expected non-negative integer, got {warmup_batches}")
+    if warmup_batches >= nbatches:
+        raise ValueError(
+            f"'--warmup-batches' ({warmup_batches}) must be less than '--num-batches' ({nbatches})"
+        )
     bsz = args.batch_size
     fname = args.data_generation
 
@@ -347,4 +355,5 @@ def build_sim_config(args):
         mxu_dimension=mxu_dimension,
         num_mxus=num_mxus,
         output_filename=args.output_filename,
+        warmup_batches=warmup_batches,
     )

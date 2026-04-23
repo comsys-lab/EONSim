@@ -23,12 +23,15 @@ dataset_list=("dlrm/reuse_high_test.txt") # "dlrm/reuse_high_test.txt" "dlrm/reu
 MEM_CFG=$1
 MATRIX_CFG="tpuv6e.cfg"
 
-NUM_BATCH=1
+NUM_BATCH=2
 BS=256
+
+# Temporarily set all batches except for the last batch as warmup for faster simulation and testing.
+WARMUP_BATCHES=$((NUM_BATCH - 1))
 
 # Set PROF_PERIOD to $2 if provided, otherwise default to 1.
 # This parameter is to set the profile period for profiling-based policies. For the other policies, this parameter will be ignored.
-# For profile_dynamic_* policies, this is the batch-period for profiling refresh:
+# For profile_dynamic_* policies, this is the batch-granularity period for profiling refresh:
 #   1 -> refresh every batch, 2 -> every 2 batches, N -> every N batches.
 # Example: ./run_sim.sh profile_dcache 4
 PROF_PERIOD=${2:-1}
@@ -63,6 +66,7 @@ for dataset in "${dataset_list[@]}"; do
         --memory-config=$MEM_CFG \
         --matrix-config=$MATRIX_CFG \
         --profiling-period $PROF_PERIOD \
+        --warmup-batches $WARMUP_BATCHES \
         --output-filename $OUTPUT_FILENAME \
         | tee $LOGFILE
 done
