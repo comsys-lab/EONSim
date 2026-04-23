@@ -1,5 +1,6 @@
 from collections import Counter
 import numpy as np
+import heapq
 from cache_modules.LRU_module import LRU_module
 from cache_modules.LFU_module import LFU_module
 from cache_modules.SRRIP_module import SRRIP_module
@@ -67,13 +68,14 @@ class LFUPolicy(OnmemPolicy):
         return self.on_mem[index].access(tag)
 
 class OptPolicy(OnmemPolicy):
-    def __init__(self, cache_config, emb_dataset, num_cores=1):
+    def __init__(self, cache_config, emb_dataset, num_cores=1, enable_bypass=False):
         super().__init__(cache_config)
         
         self.cache_way = cache_config['way']
         self.cache_line_size = cache_config['line_size']
         self.cache_set = cache_config['set_count']
         self.num_cores = num_cores
+        self.enable_bypass = bool(enable_bypass)
         
         cache_offset_bits = int(np.log2(self.cache_line_size-1)+1)
         offset_mask_bits = (1 << cache_offset_bits) - 1
@@ -105,7 +107,7 @@ class OptPolicy(OnmemPolicy):
         print("OPT Preprocessing Done.")
     
     def _flatten_multicore_roundrobin(self, emb_dataset):
-        """Flatten dataset in round-robin order matching multicore simulation"""
+        """Flatten dataset in batch-barriered round-robin order matching runtime simulation."""
         # Partition tables across cores
         num_tables = len(emb_dataset[0])
         tables_per_core = num_tables // self.num_cores
@@ -128,9 +130,18 @@ class OptPolicy(OnmemPolicy):
                 self.batch_idx = 0
                 self.table_idx = table_start
                 self.vec_idx = 0
+                self.total_accesses = self._count_total_accesses()
+                self.current_access = 0
+
+            def _count_total_accesses(self):
+                total = 0
+                for batch in self.dataset:
+                    for table_id in range(self.table_start, self.table_end):
+                        total += len(batch[table_id])
+                return total
             
             def has_next(self):
-                return self.batch_idx < len(self.dataset)
+                return self.current_access < self.total_accesses
             
             def get_next(self):
                 if not self.has_next():
@@ -141,72 +152,141 @@ class OptPolicy(OnmemPolicy):
             
             def _advance(self):
                 self.vec_idx += 1
+                self.current_access += 1
                 if self.vec_idx >= len(self.dataset[self.batch_idx][self.table_idx]):
                     self.vec_idx = 0
                     self.table_idx += 1
                     if self.table_idx >= self.table_end:
                         self.table_idx = self.table_start
                         self.batch_idx += 1
+                        if self.batch_idx >= len(self.dataset):
+                            self.batch_idx = len(self.dataset) - 1
         
         iterators = [
-            SimpleIterator(emb_dataset, table_start, table_end)
+            (table_start, table_end)
             for table_start, table_end in table_ranges
         ]
-        
-        # Round-robin collection
+
+        # Round-robin collection with a batch barrier.
+        # This keeps access order aligned with runtime cache simulation,
+        # where all cores finish one batch before the next batch starts.
         flat_list = []
-        tick = 0
-        active = [True] * self.num_cores
-        
-        while any(active):
-            core_id = tick % self.num_cores
-            if active[core_id] and iterators[core_id].has_next():
-                addr = iterators[core_id].get_next()
+        for nb in range(len(emb_dataset)):
+            single_batch = [emb_dataset[nb]]
+            batch_iterators = [
+                SimpleIterator(single_batch, table_start, table_end)
+                for table_start, table_end in iterators
+            ]
+
+            # Iterate only active cores to avoid sparse-core tick overhead.
+            active_core_ids = [core_id for core_id, it in enumerate(batch_iterators) if it.has_next()]
+            rr_idx = 0
+
+            while active_core_ids:
+                core_id = active_core_ids[rr_idx]
+                iterator = batch_iterators[core_id]
+
+                addr = iterator.get_next()
                 if addr is not None:
                     flat_list.append(addr)
-                if not iterators[core_id].has_next():
-                    active[core_id] = False
-            tick += 1
+
+                if iterator.has_next():
+                    rr_idx = (rr_idx + 1) % len(active_core_ids)
+                else:
+                    del active_core_ids[rr_idx]
+                    if active_core_ids:
+                        rr_idx %= len(active_core_ids)
         
         return np.array(flat_list, dtype=np.int64)
 
     def initialize(self):
-        # on_mem stores the tags currently in cache
-        self.on_mem = [[] for _ in range(self.cache_set)]
-        # on_mem_next_use stores the 'next_access' index for each tag in on_mem
-        self.on_mem_next_use = [[] for _ in range(self.cache_set)]
+        # Fixed-size per-set state for faster hit lookup and victim selection.
+        self.on_mem = np.zeros((self.cache_set, self.cache_way), dtype=np.int64)
+        self.on_mem_next_use = np.full((self.cache_set, self.cache_way), -1, dtype=np.int64)
+        self.valid_count = np.zeros(self.cache_set, dtype=np.int32)
+        self.tag_to_way = [{} for _ in range(self.cache_set)]
+        # Per-set max-heap over resident lines: key=(-next_use, way, version).
+        # This preserves legacy tie-break: first maximum -> smallest way index.
+        self.next_use_heaps = [[] for _ in range(self.cache_set)]
+        self.way_versions = np.zeros((self.cache_set, self.cache_way), dtype=np.int64)
 
-    def handle_access(self, tag, index):
+    def _push_way_state(self, set_idx, way):
+        self.way_versions[set_idx, way] += 1
+        ver = int(self.way_versions[set_idx, way])
+        next_use = int(self.on_mem_next_use[set_idx, way])
+        heapq.heappush(self.next_use_heaps[set_idx], (-next_use, int(way), ver))
+
+    def _peek_farthest_way(self, set_idx):
+        heap = self.next_use_heaps[set_idx]
+        while heap:
+            neg_next, way, ver = heap[0]
+            if ver != int(self.way_versions[set_idx, way]):
+                heapq.heappop(heap)
+                continue
+            if way >= int(self.valid_count[set_idx]):
+                heapq.heappop(heap)
+                continue
+            return int(way), int(-neg_next)
+        return None, None
+
+    def _pop_farthest_way(self, set_idx):
+        heap = self.next_use_heaps[set_idx]
+        while heap:
+            neg_next, way, ver = heapq.heappop(heap)
+            if ver != int(self.way_versions[set_idx, way]):
+                continue
+            if way >= int(self.valid_count[set_idx]):
+                continue
+            return int(way), int(-neg_next)
+        return None, None
+
+    def handle_access(self, tag, index, **kwargs):
         # Get the precomputed next use index for the current access
         # Since self.curr_cycle corresponds to the exact sequence of access,
         # self.next_access[self.curr_cycle] correctly points to the next time *this specific line* is used.
-        current_next_use = self.next_access[self.curr_cycle]
-        
-        # Check for hit
-        if tag in self.on_mem[index]:
-            # Hit
-            # Update the next_use for this tag
-            pos = self.on_mem[index].index(tag)
-            self.on_mem_next_use[index][pos] = current_next_use
+        current_next_use = int(self.next_access[self.curr_cycle])
+        tag = int(tag)
+
+        set_map = self.tag_to_way[index]
+        way = set_map.get(tag)
+
+        if way is not None:
+            self.on_mem_next_use[index, way] = current_next_use
+            self._push_way_state(index, way)
             return True, None
-        else:
-            # Miss
-            if len(self.on_mem[index]) < self.cache_way:
-                # Fill invalid way
-                self.on_mem[index].append(tag)
-                self.on_mem_next_use[index].append(current_next_use)
+
+        valid = int(self.valid_count[index])
+        if valid < self.cache_way:
+            fill_way = valid
+            self.on_mem[index, fill_way] = tag
+            self.on_mem_next_use[index, fill_way] = current_next_use
+            self.valid_count[index] = valid + 1
+            set_map[tag] = fill_way
+            self._push_way_state(index, fill_way)
+            return False, None
+
+        if self.enable_bypass:
+            # Bypass when this miss has strictly farther next use than all resident lines.
+            # This keeps off-chip miss accounting while avoiding cache pollution.
+            _, farthest_resident_next_use = self._peek_farthest_way(index)
+            if farthest_resident_next_use is None:
+                raise RuntimeError("OPT heap state is empty for a full cache set")
+            if current_next_use > farthest_resident_next_use:
                 return False, None
-            else:
-                # Evict victim with furthest next use
-                # Find index of max value in on_mem_next_use[index]
-                victim_pos = self.on_mem_next_use[index].index(max(self.on_mem_next_use[index]))
-                victim = self.on_mem[index][victim_pos]
-                
-                # Replace
-                self.on_mem[index][victim_pos] = tag
-                self.on_mem_next_use[index][victim_pos] = current_next_use
-                
-                return False, victim
+
+        # Use first-maximum tie-break to match prior list.index(max(...)) behavior.
+        victim_way, _ = self._pop_farthest_way(index)
+        if victim_way is None:
+            raise RuntimeError("OPT victim selection failed: no valid heap entry")
+        victim = int(self.on_mem[index, victim_way])
+
+        del set_map[victim]
+        self.on_mem[index, victim_way] = tag
+        self.on_mem_next_use[index, victim_way] = current_next_use
+        set_map[tag] = victim_way
+        self._push_way_state(index, victim_way)
+
+        return False, victim
 
     def post_access_processing(self, hit, tag, index, vec):
         self.curr_cycle += 1
@@ -248,6 +328,8 @@ class SpadPolicy(OnmemPolicy):
 
     def set_spad_naive(self):
         on_mem_set = []
+        vector_bytes = self.emb_dim * self.n_format_byte
+        vector_stride = ((vector_bytes + self.mem_gran - 1) // self.mem_gran) * self.mem_gran
         
         # Partition tables across cores (same logic as CoreOnmem._partition_tables_across_cores)
         tables_per_core = self.num_tables // self.num_cores
@@ -270,13 +352,12 @@ class SpadPolicy(OnmemPolicy):
                 break_flag = False
                 
                 for t_i in range(start_idx, table_end):
+                    table_base = t_i * self.vectors_per_table * vector_stride
                     for v_i in range(self.vectors_per_table):
+                        row_base = v_i * vector_stride
                         for d_i in range(self.access_per_vector):
-                            bytes_per_vec = (self.emb_dim * self.n_format_byte - 1).bit_length()
-                            tbl_bits = t_i << int(np.log2(self.vectors_per_table-1)+1 + bytes_per_vec)
-                            vec_idx = v_i << bytes_per_vec
-                            dim_bits = self.mem_gran * d_i
-                            this_addr = tbl_bits + vec_idx + dim_bits
+                            dim_offset = self.mem_gran * d_i
+                            this_addr = table_base + row_base + dim_offset
                             on_mem_set.append(this_addr)
                             core_counter += 1
                             counter += 1
@@ -296,17 +377,18 @@ class SpadPolicy(OnmemPolicy):
 
     def set_spad_random(self):
         on_mem_set = []
+        vector_bytes = self.emb_dim * self.n_format_byte
+        vector_stride = ((vector_bytes + self.mem_gran - 1) // self.mem_gran) * self.mem_gran
         avail_space = list(itertools.product(range(self.num_tables), range(self.vectors_per_table)))
         random.shuffle(avail_space)
         avail_space = avail_space[:int(self.spad_size/self.access_per_vector)]
         with tqdm(total=self.spad_size, desc="Setting spad") as pbar:
             for pair in avail_space:
+                table_base = pair[0] * self.vectors_per_table * vector_stride
+                row_base = pair[1] * vector_stride
                 for d_i in range(self.access_per_vector):
-                    bytes_per_vec = (self.emb_dim * self.n_format_byte - 1).bit_length()
-                    tbl_bits = pair[0] << int(np.log2(self.vectors_per_table) + bytes_per_vec)
-                    vec_idx = pair[1] << bytes_per_vec
-                    dim_bits = self.mem_gran * d_i
-                    this_addr = tbl_bits + vec_idx + dim_bits
+                    dim_offset = self.mem_gran * d_i
+                    this_addr = table_base + row_base + dim_offset
                     on_mem_set.append(this_addr)
                     pbar.update(1)
         return set(on_mem_set)
@@ -413,6 +495,8 @@ class ProfilePolicy(OnmemPolicy):
 
     def _set_spad(self):
         on_mem_set = []
+        vector_bytes = self.emb_dim * self.n_format_byte
+        vector_stride = ((vector_bytes + self.mem_gran - 1) // self.mem_gran) * self.mem_gran
 
         if self.profile_policy in {"profile_dynamic_cache", "profile_dynamic_SRRIP"}:
             logger_empty = (
@@ -425,13 +509,12 @@ class ProfilePolicy(OnmemPolicy):
                 counter = 0
                 break_flag = False
                 for t_i in range(self.num_tables):
+                    table_base = t_i * self.vectors_per_table * vector_stride
                     for v_i in range(self.vectors_per_table):
+                        row_base = v_i * vector_stride
                         for d_i in range(self.access_per_vector):
-                            bytes_per_vec = (self.emb_dim * self.n_format_byte - 1).bit_length()
-                            tbl_bits = t_i << int(np.log2(self.vectors_per_table - 1) + 1 + bytes_per_vec)
-                            vec_idx = v_i << bytes_per_vec
-                            dim_bits = self.mem_gran * d_i
-                            this_addr = tbl_bits + vec_idx + dim_bits
+                            dim_offset = self.mem_gran * d_i
+                            this_addr = table_base + row_base + dim_offset
                             on_mem_set.append(this_addr)
                             counter += 1
                             if counter == self.spad_size:
@@ -463,13 +546,12 @@ class ProfilePolicy(OnmemPolicy):
                 counter = 0
                 break_flag = False
                 for t_i in range(self.num_tables):
+                    table_base = t_i * self.vectors_per_table * vector_stride
                     for v_i in range(self.vectors_per_table):
+                        row_base = v_i * vector_stride
                         for d_i in range(self.access_per_vector):
-                            bytes_per_vec = (self.emb_dim * self.n_format_byte - 1).bit_length()
-                            tbl_bits = t_i << int(np.log2(self.vectors_per_table - 1) + 1 + bytes_per_vec)
-                            vec_idx = v_i << bytes_per_vec
-                            dim_bits = self.mem_gran * d_i
-                            this_addr = tbl_bits + vec_idx + dim_bits
+                            dim_offset = self.mem_gran * d_i
+                            this_addr = table_base + row_base + dim_offset
                             on_mem_set.append(this_addr)
                             counter += 1
                             if counter == self.spad_size:
@@ -489,12 +571,11 @@ class ProfilePolicy(OnmemPolicy):
                 table_indices = temp // self.vectors_per_table
                 vector_indices = temp % self.vectors_per_table
 
-                bytes_per_vec = (self.emb_dim * self.n_format_byte - 1).bit_length()
-                dim_offsets = np.arange(self.access_per_vector) * self.mem_gran
-                tbl_bits = table_indices[:, None] << int(np.log2(self.vectors_per_table - 1) + 1 + bytes_per_vec)
-                vec_idx = vector_indices[:, None] << bytes_per_vec
+                dim_offsets = np.arange(self.access_per_vector, dtype=np.int64) * self.mem_gran
+                table_base = table_indices[:, None] * (self.vectors_per_table * vector_stride)
+                row_base = vector_indices[:, None] * vector_stride
 
-                addresses = tbl_bits + vec_idx + dim_offsets
+                addresses = table_base + row_base + dim_offsets
                 on_mem_arr = addresses.ravel()[:self.spad_size]
                 self.counter_arr = np.zeros((1, len(self.index_trace[0]), self.vectors_per_table), dtype=np.int64)
 

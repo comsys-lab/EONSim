@@ -28,6 +28,11 @@ class RuntimeModel:
         self.total_compute_time_cycles = 0
         self.vload_cycles = 0
         self.vadd_cycles = 0
+        self.vector_compute_cycles = 0
+        self.num_candidate_vectors = 0
+        self.l2_sub_ops = 0
+        self.l2_mul_ops = 0
+        self.l2_acc_ops = 0
         
         self.set_params(workload_type, emb_dim, num_tables, bsz, num_indices_per_lookup, n_format_byte, vector_lanes, vector_sublanes, vector_alus_per_sublanes, mxu_dimension, num_mxus, onchip_config)
     
@@ -48,15 +53,15 @@ class RuntimeModel:
     
     def do_runtime_calculation(self):
         print(f"Calculating computation time model...")
-        
-        # Number of vector additions for pooled embedding reduction.
-        if self.workload_type == "dlrm":
-            vectors_per_sample_per_table = self.num_indices_per_lookup
-            num_vops = max(0, (vectors_per_sample_per_table - 1) * self.bsz * self.num_tables)
-            num_vectors_loaded = vectors_per_sample_per_table * self.bsz * self.num_tables
-        else:
-            num_vops = 0
-            num_vectors_loaded = 0
+
+        # Reset per-run derived stats.
+        self.vload_cycles = 0
+        self.vadd_cycles = 0
+        self.vector_compute_cycles = 0
+        self.num_candidate_vectors = 0
+        self.l2_sub_ops = 0
+        self.l2_mul_ops = 0
+        self.l2_acc_ops = 0
 
         vector_bytes = self.emb_dim * self.n_format_byte
 
@@ -69,24 +74,63 @@ class RuntimeModel:
             buffer_access_latency = self.onchip_config.get('local_onmem_latency', 0)
 
         vreg_bytes = self.vector_lanes * self.vector_sublanes * 4
-        total_vector_bytes = num_vectors_loaded * vector_bytes
-        if vreg_bytes > 0 and buffer_access_latency > 0:
-            self.vload_cycles = int(np.ceil((buffer_access_latency * total_vector_bytes) / vreg_bytes))
+        fp32_parallel_ops = self.vector_lanes * self.vector_sublanes * self.vector_alus_per_sublanes
+
+        # Number of vector additions for pooled embedding reduction.
+        if self.workload_type == "dlrm":
+            vectors_per_sample_per_table = self.num_indices_per_lookup
+            num_vops = max(0, (vectors_per_sample_per_table - 1) * self.bsz * self.num_tables)
+            num_vectors_loaded = vectors_per_sample_per_table * self.bsz * self.num_tables
+
+            total_vector_bytes = num_vectors_loaded * vector_bytes
+            if vreg_bytes > 0 and buffer_access_latency > 0:
+                self.vload_cycles = int(np.ceil((buffer_access_latency * total_vector_bytes) / vreg_bytes))
+            else:
+                self.vload_cycles = 0
+
+            # num_vops is vector-count based; convert to FP32-op count before ALU throughput scaling.
+            num_ops = num_vops * (vector_bytes / 4.0)
+            self.vadd_cycles = int(np.ceil(num_ops / fp32_parallel_ops)) if fp32_parallel_ops > 0 else 0
+            self.vector_compute_cycles = self.vadd_cycles
+
+        elif self.workload_type == "vectordb":
+            # Candidate vectors compared against query vectors.
+            self.num_candidate_vectors = self.bsz * self.num_tables * self.num_indices_per_lookup
+
+            # Query vector load is modeled with reuse per (sample, table), while candidates are loaded per comparison.
+            candidate_bytes = self.num_candidate_vectors * vector_bytes
+            query_bytes = self.bsz * self.num_tables * vector_bytes
+            total_vector_bytes = candidate_bytes + query_bytes
+
+            if vreg_bytes > 0 and buffer_access_latency > 0:
+                self.vload_cycles = int(np.ceil((buffer_access_latency * total_vector_bytes) / vreg_bytes))
+            else:
+                self.vload_cycles = 0
+
+            # L2 distance per element: sub + mul + accumulation.
+            self.l2_sub_ops = self.num_candidate_vectors * self.emb_dim
+            self.l2_mul_ops = self.num_candidate_vectors * self.emb_dim
+            self.l2_acc_ops = self.num_candidate_vectors * max(0, self.emb_dim - 1)
+            num_ops = self.l2_sub_ops + self.l2_mul_ops + self.l2_acc_ops
+            self.vector_compute_cycles = int(np.ceil(num_ops / fp32_parallel_ops)) if fp32_parallel_ops > 0 else 0
+
         else:
             self.vload_cycles = 0
+            self.vadd_cycles = 0
+            self.vector_compute_cycles = 0
 
-        # num_vops is vector-count based; convert to FP32-op count before ALU throughput scaling.
-        num_ops = num_vops * (vector_bytes / 4.0)
-        fp32_parallel_ops = self.vector_lanes * self.vector_sublanes * self.vector_alus_per_sublanes
-        self.vadd_cycles = int(np.ceil(num_ops / fp32_parallel_ops)) if fp32_parallel_ops > 0 else 0
-
-        self.total_compute_time_cycles = self.vload_cycles + self.vadd_cycles
+        self.total_compute_time_cycles = self.vload_cycles + self.vector_compute_cycles
         
         # Store computation time results (can be extended for per-batch calculations)
         self.compute_time_results.append({
             'total_compute_time_cycles': self.total_compute_time_cycles,
             'vload_cycles': self.vload_cycles,
             'vadd_cycles': self.vadd_cycles,
+            'vector_compute_cycles': self.vector_compute_cycles,
+            'num_candidate_vectors': self.num_candidate_vectors,
+            'l2_sub_ops': self.l2_sub_ops,
+            'l2_mul_ops': self.l2_mul_ops,
+            'l2_acc_ops': self.l2_acc_ops,
             'vector_unit_utilization': 0.0,  # Placeholder
             'matrix_unit_utilization': 0.0,  # Placeholder
             'memory_stall_cycles': 0.0       # Placeholder
@@ -118,7 +162,14 @@ class RuntimeModel:
         content_lines.append(f"Total Computation Time: {self.total_compute_time_cycles} cycles")
         if self.debug:
             content_lines.append(f"Vector Load Cycles: {self.vload_cycles} cycles")
-            content_lines.append(f"Vector Add Cycles: {self.vadd_cycles} cycles")
+            if self.workload_type == "vectordb":
+                content_lines.append(f"L2 Compute Cycles: {self.vector_compute_cycles} cycles")
+                content_lines.append(f"Candidate Vectors: {self.num_candidate_vectors}")
+                content_lines.append(f"L2 Sub Ops: {self.l2_sub_ops}")
+                content_lines.append(f"L2 Mul Ops: {self.l2_mul_ops}")
+                content_lines.append(f"L2 Acc Ops: {self.l2_acc_ops}")
+            else:
+                content_lines.append(f"Vector Add Cycles: {self.vadd_cycles} cycles")
         
         # Additional runtime metrics (placeholders for future implementation)
         # for i, result in enumerate(self.runtime_results):

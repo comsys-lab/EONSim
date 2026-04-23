@@ -287,18 +287,7 @@ class CoreOnmem:
                 f"Global on-chip memory policy: {self.global_onmem_config.get('mem_policy', self.mem_policy)}",
                 f"Global on-chip memory latency: {self.global_onmem_config.get('mem_latency', self.mem_latency)} cycles",
             ])
-
-        if self.onchip_structure == "local_only":
-            content.extend([
-                f"Local on-chip memory type: {self.mem_type}",
-                f"Local on-chip memory policy: {self.mem_policy}",
-            ])
-        else:
-            content.extend([
-                f"Global on-chip memory type: {self.mem_type}",
-                f"Global on-chip memory policy: {self.mem_policy}",
-            ])
-
+            
         if self.mem_type == "cache":
             if self.onchip_structure == "local_only":
                 content.extend([

@@ -2,6 +2,7 @@ import numpy as np
 import argparse
 from tqdm import tqdm
 import multiprocessing as mp
+import os
 
 ## We implement this module based on this code: https://github.com/rishucoding/reproduce_MICRO24_GPU_DLRM_inference by RJ
 
@@ -147,8 +148,19 @@ class ReqGenerator:
         ln_emb = np.asarray(ln_emb, dtype=np.int32)
         rows_per_table = ln_emb[0]
         
-        # Get number of available cores (leave one for the main process)
-        num_cores = max(1, mp.cpu_count() - 1)
+        # Allow external orchestration to cap req-generation multiprocessing.
+        env_reqgen_cores = os.getenv("EONSIM_REQGEN_CORES", "").strip()
+        if env_reqgen_cores:
+            try:
+                num_cores = max(1, int(env_reqgen_cores))
+            except ValueError:
+                num_cores = max(1, mp.cpu_count() - 1)
+        else:
+            # Default behavior: use all but one logical CPU.
+            num_cores = max(1, mp.cpu_count() - 1)
+
+        # Batch-level parallelism upper bound.
+        num_cores = min(num_cores, max(1, len(self.lS_i)))
         print(f"Starting multiprocessing with {num_cores} cores...")
         
         # Prepare data for each batch to avoid sharing the entire self
@@ -176,6 +188,45 @@ class ReqGenerator:
                     # Store the result in the main addr_trace array
                     self.addr_trace[nb] = batch_result
                     pbar.update(1)
+
+    def get_unique_vector_size_stats(self):
+        # Quick workload-footprint diagnostics from vector-index trace.
+        if len(self.lS_i) == 0:
+            return {
+                "vector_bytes": self.emb_dim * self.n_format_byte,
+                "per_batch": [],
+                "all_batches_unique_vectors": 0,
+                "all_batches_unique_bytes": 0,
+            }
+
+        num_tables = len(self.lS_i[0])
+        vector_bytes = self.emb_dim * self.n_format_byte
+        global_unique_per_table = [set() for _ in range(num_tables)]
+        per_batch_stats = []
+
+        for batch_idx, batch_trace in enumerate(self.lS_i):
+            batch_unique_vectors = 0
+
+            for table_id in range(num_tables):
+                table_indices = batch_trace[table_id]
+                unique_vec = np.unique(table_indices)
+                batch_unique_vectors += int(unique_vec.size)
+                global_unique_per_table[table_id].update(map(int, unique_vec))
+
+            per_batch_stats.append({
+                "batch_idx": batch_idx,
+                "unique_vectors": batch_unique_vectors,
+                "unique_bytes": batch_unique_vectors * vector_bytes,
+            })
+
+        all_batches_unique_vectors = sum(len(s) for s in global_unique_per_table)
+
+        return {
+            "vector_bytes": vector_bytes,
+            "per_batch": per_batch_stats,
+            "all_batches_unique_vectors": all_batches_unique_vectors,
+            "all_batches_unique_bytes": all_batches_unique_vectors * vector_bytes,
+        }
 
     def do_batch_access_pattern_analysis(self):
         # Convert first batch (batch 0) addresses into a list to maintain duplicates
