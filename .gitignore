@@ -6,8 +6,8 @@ src/__pycache__
 ### Temporal or Ongoing Codes
 src/ongoing_cpp
 src/test_lru_cache.py
-src/MemoryModel_0311_2328.py
-src/MemoryModel_backup.py
+src/_deprecated/MemoryModel_0311_2328.py
+src/_deprecated/MemoryModel_backup.py
 
 ### Temporal Scripts
 dlrm_validation_batches.sh
