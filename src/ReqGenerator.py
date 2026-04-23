@@ -95,11 +95,7 @@ class ReqGenerator:
             self.dataset_gen = self.open_gen(self.fname, int(rows))
         return self.dataset_gen
 
-    def trace_read_input_batch(
-        self,
-        m_den,
-        ln_emb,
-    ):
+    def trace_read_input_batch(self, ln_emb):
         cur_gen = self.get_gen(ln_emb[0])
 
         self.lS_emb_offsets = []
@@ -126,10 +122,9 @@ class ReqGenerator:
     def data_gen(self):
         ln_emb = np.fromstring(self.embsize, dtype=int, sep="-") # memo ln_emb represents the number of tables
         ln_emb = np.asarray(ln_emb, dtype=np.int32) # shape of ln_emb is (num_tables,)
-        ln_bot = np.fromstring('256-128-' + str(self.emb_dim), dtype=int, sep="-")
 
         for j in range(0, self.nbatches):
-            self.lS_emb_offsets, self.lS_emb_indices = self.trace_read_input_batch(ln_bot[0], ln_emb)
+            self.lS_emb_offsets, self.lS_emb_indices = self.trace_read_input_batch(ln_emb)
             self.lS_o.append(self.lS_emb_offsets)
             self.lS_i.append(self.lS_emb_indices)
             
@@ -259,5 +254,4 @@ class ReqGenerator:
             print(f"Batch {batch_idx}: {overlap_percentage:.2f}%")
 
 if __name__ == "__main__":
-    reqgen = ReqGenerator()
-    reqgen.data_gen()
+    raise SystemExit("ReqGenerator is an internal module and is not intended for standalone execution.")

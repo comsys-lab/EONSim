@@ -41,7 +41,6 @@ def parse_args():
     # execution and dataset related parameters
     parser.add_argument("--data-generation", type=str, default="./datasets/reuse_high/table_1M.txt")
     parser.add_argument("--num-batches", type=int, default=1)
-    parser.add_argument("--output-name", type=int, default=0)
     parser.add_argument("--batch-size", type=int, default=1024)
     # `profiling-period` is the canonical name; keep multiplier alias for backward compatibility.
     parser.add_argument("--profiling-period", "--profiling-multiplier", dest="profiling_period", type=int, default=1)

@@ -148,7 +148,14 @@ def build_sim_config(args):
     gen_conf = cfg_loader.get_general_config()
     matrix_ops_csv_path = cfg_loader.get_matrix_ops_config_path()
 
-    workload_type = "dlrm" if "dlrm" in args.workload_config.lower() else "unknown"
+    raw_workload_type = gen_conf.get('workload_type', '')
+    workload_type = str(raw_workload_type).strip().lower()
+    if workload_type == '':
+        raise ValueError(
+            "Invalid workload config: 'workload_type' must be a non-empty string"
+        )
+    if debug:
+        print(f"[DEBUG] Workload type from YAML: {workload_type}")
 
     emb_dim = emb_conf['embedding_dim']
     embsize = emb_conf['emb_size_str']

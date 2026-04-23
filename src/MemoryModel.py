@@ -373,25 +373,26 @@ class MemoryModel:
         if self.debug: print("[DEBUG] Starting off-chip memory simulation...")
         if self.debug: print(f"[DEBUG] Requested off-chip DRAM config: {self.offchip_memory_config}")
         if self.debug: print(f"[DEBUG] Requested NPU memory config: {self.npumem_config}")
-        
-        # Setup and cleanup
-        self.setup_intermediate_directory()
-        self.setup_eonsim_results_directory()  # Setup results directory with random suffix
-        self.setup_eonsim_config_directory()
-        trace_file_path = self.generate_trace_file()
-        
-        # Execute mNPUsim
-        self.execute_mnpusim(trace_file_path)
-        
-        # Extract results
-        self.extract_results()
-        
-        self.print_stats()
-        
-        # Cleanup directories after simulation
-        self.cleanup_intermediate_directory()
-        self.cleanup_eonsim_results_directory()  # Cleanup results directory
-        self.cleanup_eonsim_config_directory()  # Cleanup per-run config directory
+
+        try:
+            # Setup and run simulation pipeline.
+            self.setup_intermediate_directory()
+            self.setup_eonsim_results_directory()  # Setup results directory with random suffix
+            self.setup_eonsim_config_directory()
+            trace_file_path = self.generate_trace_file()
+
+            # Execute mNPUsim
+            self.execute_mnpusim(trace_file_path)
+
+            # Extract results
+            self.extract_results()
+
+            self.print_stats()
+        finally:
+            # Always cleanup temporary artifacts even when an exception occurs.
+            self.cleanup_intermediate_directory()
+            self.cleanup_eonsim_results_directory()  # Cleanup results directory
+            self.cleanup_eonsim_config_directory()  # Cleanup per-run config directory
         
     def print_stats(self):
         """Print memory simulation results"""
