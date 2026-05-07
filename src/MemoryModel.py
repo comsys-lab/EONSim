@@ -60,7 +60,7 @@ class MemoryModel:
             return []
         return [addr for table_trace in self.offmem_trace for addr in table_trace]
 
-    def _safe_access_per_vector(self):
+    def _calc_access_per_vector(self):
         if self.mem_gran <= 0 or self.emb_dim <= 0 or self.n_format_byte <= 0:
             return 1
         return max(1, int(math.ceil((self.emb_dim * self.n_format_byte) / self.mem_gran)))
@@ -80,13 +80,13 @@ class MemoryModel:
         return len(flat_trace), global_to_local_accesses, offchip_accesses
 
     def _calc_vector_count(self, total_access_count):
-        access_per_vector = self._safe_access_per_vector()
+        access_per_vector = self._calc_access_per_vector()
         if total_access_count <= 0:
             return 0
         return int(math.ceil(total_access_count / access_per_vector))
 
     def _calc_dma_requests(self, access_count):
-        access_per_vector = self._safe_access_per_vector()
+        access_per_vector = self._calc_access_per_vector()
         return int(math.ceil(access_count / access_per_vector)) if access_count > 0 else 0
 
     def _calc_issue_cycles(self, request_count, issue_width):
@@ -185,7 +185,7 @@ class MemoryModel:
         flat_offmem_trace = self._flatten_batch_trace()
         offmem_trace_path = os.path.join(self.intermediate_dir, "offmem_trace_flat.txt")
         
-        access_per_vector = self._safe_access_per_vector()
+        access_per_vector = self._calc_access_per_vector()
         
         with open(offmem_trace_path, "w") as f:
             f.write("0,")  # Initial dummy value for mNPUsim

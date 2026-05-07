@@ -26,6 +26,7 @@ MATRIX_CFG="tpuv6e.cfg"
 NUM_BATCH=2
 BS=256
 
+# EONSim skips memory simulation for the warmup batches to speed up the simulation. 
 # Temporarily set all batches except for the last batch as warmup for faster simulation and testing.
 WARMUP_BATCHES=$((NUM_BATCH - 1))
 
@@ -40,21 +41,31 @@ PROF_PERIOD=${2:-1}
 for dataset in "${dataset_list[@]}"; do
     DATA_GEN_PATH=$data_path_dir$dataset
     
-    # Filename generation for output
-    DATASET_STR=$(echo "$dataset" | sed 's/\//_/g')
-    OUTPUT_FILENAME="${DATASET_STR}_${MEM_CFG}_${NUM_BATCH}batch"
-    
-    # Resolve target output directory before running simulator.
-    TARGET_DIR=$(python3 src/helper_modules/Helper.py \
+    # Resolve target base output directory before running simulator.
+    BASE_TARGET_DIR=$(python3 src/helper_modules/Helper.py \
         --resolve-output-dir \
         --workload-config "$WORKLOAD_CONFIG" \
         --output-base-dir "$OUT" \
-        --batch-size "$BS")
+        --batch-size "$BS" \
+        --dataset-path "$DATA_GEN_PATH")
 
+    # Add config folder to target dir
+    CONFIG_NAME=$(basename "$MEM_CFG")
+    TARGET_DIR="$BASE_TARGET_DIR/$CONFIG_NAME"
     mkdir -p "$TARGET_DIR"
 
+    # Define suffix based on policy type
+    if [[ "$MEM_CFG" == profile* ]]; then
+        SUFFIX="_${PROF_PERIOD}Bperiod"
+    else
+        SUFFIX=""
+    fi
+
     # Log file path
-    LOGFILE="$TARGET_DIR/$OUTPUT_FILENAME.log"
+    LOGFILE="$TARGET_DIR/sim_log${SUFFIX}.log"
+    
+    # Pass suffix to simulator as output_filename so it can append to emb_results and matrix_results
+    OUTPUT_FILENAME="${SUFFIX}"
     
     echo "Running simulation for dataset: $dataset with config base: $WORKLOAD_CONFIG"
     
@@ -67,6 +78,6 @@ for dataset in "${dataset_list[@]}"; do
         --matrix-config=$MATRIX_CFG \
         --profiling-period $PROF_PERIOD \
         --warmup-batches $WARMUP_BATCHES \
-        --output-filename $OUTPUT_FILENAME \
-        | tee $LOGFILE
+        --output-filename "$OUTPUT_FILENAME" \
+        | tee "$LOGFILE"
 done

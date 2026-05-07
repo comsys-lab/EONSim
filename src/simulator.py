@@ -247,6 +247,35 @@ if __name__ == "__main__":
     helper.end_timer("do execution time calculation")
     
     #-------------------------------------------------------------------
+
+    ##############################################################
+    ### Saving Embedding Vector Operation Simulation Results ###
+    ##############################################################
+
+    emb_csv_path = os.path.join(sim_cfg.output_dir, f"emb_results{sim_cfg.output_filename}.csv")
+    try:
+        with open(emb_csv_path, "w") as f:
+            f.write("batch_idx,memory_cycles,compute_cycles,off_access,on_access,on_hit_ratio\n")
+            for nb, model in per_batch_memory_models:
+                if not model.execution_successful:
+                    continue
+                
+                # Fetch memory and compute cycles
+                mem_cycles = model.offmem_cycles
+                comp_cycles = compute_time.total_compute_time_cycles
+                
+                # Fetch cache/buffer hit and miss from core_onmem_obj (handles global or local context correctly)
+                batch_hit, batch_miss = core_onmem_obj.access_results[nb]
+                off_access = batch_miss
+                on_access = batch_hit + batch_miss
+                on_hit_ratio = batch_hit / on_access if on_access > 0 else 0.0
+                
+                f.write(f"{nb},{mem_cycles},{comp_cycles},{off_access},{on_access},{on_hit_ratio:.4f}\n")
+        print(f"[INFO] Saved primary embedding metrics to {emb_csv_path}")
+    except Exception as e:
+        print(f"[WARNING] Could not write {emb_csv_path}: {e}")
+    
+    #-------------------------------------------------------------------
     
     ###########################################
     ## Run Simulation for Matrix Operations ###

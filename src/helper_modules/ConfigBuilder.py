@@ -204,8 +204,13 @@ def build_sim_config(args):
         vectors_per_table=vectors_per_table,
         num_tables=num_tables,
         pooling_factor=pooling_factor,
-        batch_size=bsz
+        batch_size=bsz,
+        dataset_path=fname
     )
+    
+    # Append config_name as a subdirectory
+    config_name = os.path.splitext(os.path.basename(args.memory_config))[0]
+    output_dir = os.path.join(output_dir, config_name)
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)

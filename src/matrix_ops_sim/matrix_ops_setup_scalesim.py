@@ -412,8 +412,8 @@ class accelerator:
             os.makedirs(output_dir)
             
         # output file = this_path/results/topology_name/this_configuration_name_results.csv
-        if self.output_filename:
-            output_file = os.path.join(output_dir, self.output_filename + ".csv")
+        if self.output_filename is not None:
+            output_file = os.path.join(output_dir, "matrix_results" + self.output_filename + ".csv")
         else:
             output_file = os.path.join(
                 output_dir, 

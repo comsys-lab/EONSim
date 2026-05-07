@@ -16,12 +16,20 @@ class Helper:
         print('(Time elapsed(s) in {}: {:10.6f}sec)'.format(task, self.end-self.start))
 
     @staticmethod
-    def build_output_dir(output_base_dir, emb_dim, vectors_per_table, num_tables, pooling_factor, batch_size):
-        output_dir_name = f"{emb_dim}_{vectors_per_table}_{num_tables}_{pooling_factor}_{batch_size}"
+    def build_output_dir(output_base_dir, emb_dim, vectors_per_table, num_tables, pooling_factor, batch_size, dataset_path=None):
+        dataset_name = ""
+        if dataset_path:
+            # Create a string like dlrm_reuse_high_test from datasets/dlrm/reuse_high_test.txt
+            # Remove leading directories if they are just "datasets/" for cleaner names, but robustly:
+            clean_path = dataset_path.split("datasets/")[-1] if "datasets/" in dataset_path else dataset_path
+            name_no_ext = os.path.splitext(clean_path)[0]
+            dataset_name = "_" + name_no_ext.replace("/", "_")
+        
+        output_dir_name = f"{emb_dim}_{vectors_per_table}_{num_tables}_{pooling_factor}_{batch_size}{dataset_name}"
         return os.path.join(output_base_dir, output_dir_name)
 
     @staticmethod
-    def resolve_output_dir_from_workload(output_base_dir, workload_config_base_path, batch_size):
+    def resolve_output_dir_from_workload(output_base_dir, workload_config_base_path, batch_size, dataset_path=None):
         try:
             from .ConfigLoader import ConfigLoader
         except ImportError:
@@ -36,7 +44,8 @@ class Helper:
             vectors_per_table=emb_conf['vectors_per_table'],
             num_tables=emb_conf['num_tables'],
             pooling_factor=emb_conf['pooling_factor'],
-            batch_size=batch_size
+            batch_size=batch_size,
+            dataset_path=dataset_path
         )
 
 
@@ -65,6 +74,7 @@ def main():
     parser.add_argument("--workload-config", type=str, help="Workload config base path")
     parser.add_argument("--output-base-dir", type=str, help="Base output directory")
     parser.add_argument("--batch-size", type=int, help="Batch size")
+    parser.add_argument("--dataset-path", type=str, default=None, help="Dataset path")
     args = parser.parse_args()
 
     if args.resolve_output_dir:
@@ -76,6 +86,7 @@ def main():
                 output_base_dir=args.output_base_dir,
                 workload_config_base_path=args.workload_config,
                 batch_size=args.batch_size,
+                dataset_path=args.dataset_path
             )
         )
 
