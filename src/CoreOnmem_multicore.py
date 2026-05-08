@@ -72,6 +72,7 @@ class CoreOnmem:
         self.emb_dim = 0
         self.emb_dataset = np.ones(1)
         
+        self.addr_bits = 64  # set address width here
         self.cache_way = 0
         self.cache_line_size = 0
         self.cache_set = 0
@@ -112,7 +113,18 @@ class CoreOnmem:
         self.emb_dataset = emb_dataset
         
         self.n_format_byte = n_format_byte
-        
+
+        # Validate workload address space fits within addr_bits
+        if mem_gran > 0 and emb_dim > 0 and n_format_byte > 0 and vectors_per_table > 0 and emb_dataset:
+            num_tables = len(emb_dataset[0])
+            access_per_vector = max(1, int(np.ceil(emb_dim * n_format_byte / mem_gran)))
+            max_addr = num_tables * vectors_per_table * access_per_vector * mem_gran
+            if max_addr.bit_length() > self.addr_bits:
+                raise ValueError(
+                    f"Workload address space requires {max_addr.bit_length()} bits "
+                    f"but addr_bits={self.addr_bits}. Adjust addr_bits in CoreOnmem.__init__()."
+                )
+
         if self.mem_type == "cache":
             self.cache_config = dict(cache_config)
             # below configs are only for cache configurations
@@ -122,9 +134,15 @@ class CoreOnmem:
             # Fix: Use ceiling of log2 to handle non-power-of-2 cache sets
             self.cache_index_bits = int(np.ceil(np.log2(self.cache_set))) if self.cache_set > 1 else 0
             self.cache_offset_bits = int(np.log2(self.cache_line_size-1)+1) # byte offset
-            self.cache_tag_bits = 48 - self.cache_index_bits - self.cache_offset_bits # 48 bits - index bits - byte offset
+            self.cache_tag_bits = self.addr_bits - self.cache_index_bits - self.cache_offset_bits
+            if self.cache_tag_bits <= 0:
+                raise ValueError(
+                    f"Cache geometry needs {self.cache_index_bits + self.cache_offset_bits} address bits "
+                    f"(index + offset) but addr_bits={self.addr_bits}. "
+                    f"Reduce mem_size, increase cache_way, or decrease access_granularity."
+                )
             self.rrpv_bits = self.cache_config.get('rrpv_bits', 0)
-            self.rrpv_insert = self.cache_config.get('rrip_insert', 0)
+            self.rrpv_insert = self.cache_config.get('rrpv_insert', 0)
             self.lfu_counter_bits = self.cache_config.get('lfu_counter_bits', 8)
             self.lfu_aging_interval = self.cache_config.get('lfu_aging_interval', 0)
         elif self.mem_type == "profile":
@@ -139,9 +157,15 @@ class CoreOnmem:
             self.cache_set = max(1, int(self.mem_size / self.cache_line_size / self.cache_way))
             self.cache_index_bits = int(np.ceil(np.log2(self.cache_set))) if self.cache_set > 1 else 0
             self.cache_offset_bits = int(np.log2(self.cache_line_size - 1) + 1)
-            self.cache_tag_bits = 48 - self.cache_index_bits - self.cache_offset_bits
+            self.cache_tag_bits = self.addr_bits - self.cache_index_bits - self.cache_offset_bits
+            if self.cache_tag_bits <= 0:
+                raise ValueError(
+                    f"Cache geometry needs {self.cache_index_bits + self.cache_offset_bits} address bits "
+                    f"(index + offset) but addr_bits={self.addr_bits}. "
+                    f"Reduce mem_size, increase cache_way, or decrease access_granularity."
+                )
             self.rrpv_bits = self.cache_config.get('rrpv_bits', 0)
-            self.rrpv_insert = self.cache_config.get('rrip_insert', 0)
+            self.rrpv_insert = self.cache_config.get('rrpv_insert', 0)
         elif self.mem_type == "spad":
             self.mem_gran = mem_gran
             self.prof_period = prof_period
@@ -171,7 +195,7 @@ class CoreOnmem:
         self.mem_policy = policy
         if self.mem_type == "cache":
             if not policy.startswith("cache_"):
-                assert False, f"Invalid policy: '{policy}' for mem_type: '{self.mem_type}'"
+                raise ValueError(f"Invalid policy: '{policy}' for mem_type: '{self.mem_type}'")
 
             cache_config = dict(self.cache_config)
             cache_config['set_count'] = self.cache_set
@@ -195,13 +219,13 @@ class CoreOnmem:
                 raise NotImplementedError(f"Unknown on-chip structure: {self.onchip_structure}")
         elif self.mem_type == "spad":
             if not policy.startswith("spad_"):
-                assert False, f"Invalid policy: '{policy}' for mem_type: '{self.mem_type}'"
+                raise ValueError(f"Invalid policy: '{policy}' for mem_type: '{self.mem_type}'")
             self.policy = SpadPolicy(self.mem_size, self.mem_gran, self.emb_dim, self.n_format_byte, self.emb_dataset, self.vectors_per_table, self.prof_period, self.mem_policy, self.num_cores, debug=self.debug)
             self.policy.initialize()
             self.on_mem = self.policy.on_mem
         elif self.mem_type == "profile":
             if not policy.startswith("profile_"):
-                assert False, f"Invalid policy: '{policy}' for mem_type: '{self.mem_type}'"
+                raise ValueError(f"Invalid policy: '{policy}' for mem_type: '{self.mem_type}'")
 
             profile_cache_config = dict(self.cache_config)
             profile_cache_config['set_count'] = self.cache_set
@@ -650,7 +674,7 @@ class CoreOnmem:
                         f"accesses: {logger_access}   hits: {logger_hit}   misses: {logger_miss}"
                     )
         
-        # Per-core statistics
+        # Per-core statistics — uncomment below to enable per-core hit/miss output
         # content.append("----------------------------------------")
         # content.append("Per-Core Statistics:")
         # for core_id in range(self.num_cores):

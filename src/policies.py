@@ -43,7 +43,7 @@ class SRRIPPolicy(OnmemPolicy):
     def __init__(self, cache_config):
         super().__init__(cache_config)
         self.rrpv_bits = cache_config['rrpv_bits']
-        self.rrpv_insert = cache_config['rrip_insert']
+        self.rrpv_insert = cache_config['rrpv_insert']
 
     def initialize(self):
         self.on_mem = [SRRIP_module(self.cache_way, self.rrpv_bits, self.rrpv_insert) for _ in range(self.cache_set)]
@@ -447,8 +447,8 @@ class ProfilePolicy(OnmemPolicy):
         self.cache_line_size = cache_config.get('line_size', 0) or self.mem_gran
         self.cache_set = max(1, int(self.mem_size / self.cache_line_size / self.cache_way))
 
-        self.rrpv_bits = cache_config.get('rrpv_bits', 0) or 4
-        self.rrpv_insert = cache_config.get('rrip_insert', 0) or 14
+        self.rrpv_bits = cache_config.get('rrpv_bits', 4)
+        self.rrpv_insert = cache_config.get('rrpv_insert', 14)
 
         self.access_results = []
         self.spad_load_results = []

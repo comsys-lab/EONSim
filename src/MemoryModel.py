@@ -38,8 +38,8 @@ class MemoryModel:
         self.debug = debug
 
         # Analytical model parameters.
-        self.offchip_issue_width = 1
-        self.global_issue_width = 1
+        self.offchip_issue_width = 1   # off-chip DMA issue width; increase to model wider DMA engines
+        self.global_issue_width = 1    # global-to-local DMA issue width
         self.global_bw_bytes_per_cycle = float(global_bw_bytes_per_cycle) if global_bw_bytes_per_cycle else 0.0
         self.global_latency_cycles = int(global_latency_cycles) if global_latency_cycles else 0
         self.onchip_structure = onchip_structure
@@ -141,6 +141,11 @@ class MemoryModel:
 
         offchip_total_cycles = max(self.offmem_cycles_raw, offchip_issue_cycles)
 
+        # Analytical Local Buffer Access calculation
+        local_buffer_accesses = 0
+        if self.onchip_structure == "two_level":
+            local_buffer_accesses = total_vector_count * self._calc_access_per_vector()
+
         global_to_local_transfer_cycles = 0
         global_to_local_total_cycles = 0
         if self.onchip_structure == "two_level" and global_to_local_accesses > 0:
@@ -155,6 +160,7 @@ class MemoryModel:
         self.analytical_results = {
             "offchip_accesses": offchip_accesses,
             "total_vector_count": total_vector_count,
+            "local_buffer_accesses": local_buffer_accesses,
             "global_to_local_accesses": global_to_local_accesses,
             "offchip_requests": offchip_requests,
             "global_to_local_requests": global_to_local_requests,

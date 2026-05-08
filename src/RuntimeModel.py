@@ -130,10 +130,7 @@ class RuntimeModel:
             'num_candidate_vectors': self.num_candidate_vectors,
             'l2_sub_ops': self.l2_sub_ops,
             'l2_mul_ops': self.l2_mul_ops,
-            'l2_acc_ops': self.l2_acc_ops,
-            'vector_unit_utilization': 0.0,  # Placeholder
-            'matrix_unit_utilization': 0.0,  # Placeholder
-            'memory_stall_cycles': 0.0       # Placeholder
+            'l2_acc_ops': self.l2_acc_ops
         })
         
         self.print_stats()
@@ -170,16 +167,6 @@ class RuntimeModel:
                 content_lines.append(f"L2 Acc Ops: {self.l2_acc_ops}")
             else:
                 content_lines.append(f"Vector Add Cycles: {self.vadd_cycles} cycles")
-        
-        # Additional runtime metrics (placeholders for future implementation)
-        # for i, result in enumerate(self.runtime_results):
-        #     if len(self.runtime_results) > 1:
-        #         content_lines.append(f"Batch {i} Runtime Details:")
-        #     else:
-        #         content_lines.append("Runtime Details:")
-        #     content_lines.append(f"  Vector Unit Utilization: {result['vector_unit_utilization']:.2f}%")
-        #     content_lines.append(f"  Matrix Unit Utilization: {result['matrix_unit_utilization']:.2f}%")
-        #     content_lines.append(f"  Memory Stall Cycles: {result['memory_stall_cycles']:.0f}")
         
         print_styled_box("Computation Time Model Results", content_lines)
     

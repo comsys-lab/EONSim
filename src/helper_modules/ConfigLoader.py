@@ -54,7 +54,7 @@ class ConfigLoader:
         cache_way = 0
         cache_line_size = 0
         rrpv_bits = 0
-        rrip_insert = 0
+        rrpv_insert = 0
         lfu_counter_bits = 8
         lfu_aging_interval = 0
 
@@ -62,17 +62,16 @@ class ConfigLoader:
             cache_way = local_buffer_config.get('cache_way', 0)
             cache_line_size = onmem_gran
 
-        if onmem_policy in ['cache_SRRIP', 'profile_dynamic_SRRIP']:
+        if onmem_policy == 'cache_SRRIP':
             rrpv_bits = local_buffer_config.get('RRPV_bits', 0)
-            rrip_insert = local_buffer_config.get('RRPV_insertion', 0)
+            rrpv_insert = local_buffer_config.get('RRPV_insertion', 0)
+        elif onmem_policy == 'profile_dynamic_SRRIP':
+            rrpv_bits = local_buffer_config.get('RRPV_bits', 4)
+            rrpv_insert = local_buffer_config.get('RRPV_insertion', 14)
 
         if onmem_policy == 'cache_LFU':
             lfu_counter_bits = local_buffer_config.get('lfu_counter_bits', 8)
             lfu_aging_interval = local_buffer_config.get('lfu_aging_interval', 0)
-
-        if onmem_policy == 'profile_dynamic_SRRIP':
-            rrpv_bits = 4
-            rrip_insert = 14
 
         result['local_buffer'] = {
             'mem_size': onmem_size,
@@ -83,7 +82,7 @@ class ConfigLoader:
             'cache_way': cache_way,
             'cache_line_size': cache_line_size,
             'rrpv_bits': rrpv_bits,
-            'rrip_insert': rrip_insert,
+            'rrpv_insert': rrpv_insert,
             'lfu_counter_bits': lfu_counter_bits,
             'lfu_aging_interval': lfu_aging_interval,
         }
@@ -91,7 +90,7 @@ class ConfigLoader:
             'way': cache_way,
             'line_size': cache_line_size,
             'rrpv_bits': rrpv_bits,
-            'rrip_insert': rrip_insert,
+            'rrpv_insert': rrpv_insert,
             'lfu_counter_bits': lfu_counter_bits,
             'lfu_aging_interval': lfu_aging_interval,
         }
@@ -105,7 +104,7 @@ class ConfigLoader:
         global_cache_way = 0
         global_cache_line_size = 0
         global_rrpv_bits = 0
-        global_rrip_insert = 0
+        global_rrpv_insert = 0
         global_lfu_counter_bits = 8
         global_lfu_aging_interval = 0
 
@@ -121,17 +120,16 @@ class ConfigLoader:
                 global_cache_way = global_buffer_config.get('cache_way', 0)
                 global_cache_line_size = global_onmem_gran
 
-            if global_onmem_policy in ['cache_SRRIP', 'profile_dynamic_SRRIP']:
+            if global_onmem_policy == 'cache_SRRIP':
                 global_rrpv_bits = global_buffer_config.get('RRPV_bits', 0)
-                global_rrip_insert = global_buffer_config.get('RRPV_insertion', 0)
+                global_rrpv_insert = global_buffer_config.get('RRPV_insertion', 0)
+            elif global_onmem_policy == 'profile_dynamic_SRRIP':
+                global_rrpv_bits = global_buffer_config.get('RRPV_bits', 4)
+                global_rrpv_insert = global_buffer_config.get('RRPV_insertion', 14)
 
             if global_onmem_policy == 'cache_LFU':
                 global_lfu_counter_bits = global_buffer_config.get('lfu_counter_bits', 8)
                 global_lfu_aging_interval = global_buffer_config.get('lfu_aging_interval', 0)
-
-            if global_onmem_policy == 'profile_dynamic_SRRIP':
-                global_rrpv_bits = 4
-                global_rrip_insert = 14
 
         result['global_buffer'] = {
             'mem_size': global_onmem_size,
@@ -142,7 +140,7 @@ class ConfigLoader:
             'cache_way': global_cache_way,
             'cache_line_size': global_cache_line_size,
             'rrpv_bits': global_rrpv_bits,
-            'rrip_insert': global_rrip_insert,
+            'rrpv_insert': global_rrpv_insert,
             'lfu_counter_bits': global_lfu_counter_bits,
             'lfu_aging_interval': global_lfu_aging_interval,
         }
@@ -150,7 +148,7 @@ class ConfigLoader:
             'way': global_cache_way,
             'line_size': global_cache_line_size,
             'rrpv_bits': global_rrpv_bits,
-            'rrip_insert': global_rrip_insert,
+            'rrpv_insert': global_rrpv_insert,
             'lfu_counter_bits': global_lfu_counter_bits,
             'lfu_aging_interval': global_lfu_aging_interval,
         }

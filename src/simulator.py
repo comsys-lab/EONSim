@@ -46,7 +46,6 @@ def parse_args():
     parser.add_argument("--profiling-period", "--profiling-multiplier", dest="profiling_period", type=int, default=1)
     parser.add_argument("--warmup-batches", type=int, default=0, help="Number of leading batches excluded from memory/runtime simulation")
     parser.add_argument("--output-filename", type=str, default=None, help="Filename for simulation results (without extension)")
-    parser.add_argument("--this-output-dir-file", type=str, default=None, help="Per-run file path to write resolved output directory")
 
     # Output base directory
     parser.add_argument("--output-base-dir", type=str, default="results", help="Base directory for output results")
@@ -255,22 +254,23 @@ if __name__ == "__main__":
     emb_csv_path = os.path.join(sim_cfg.output_dir, f"emb_results{sim_cfg.output_filename}.csv")
     try:
         with open(emb_csv_path, "w") as f:
-            f.write("batch_idx,memory_cycles,compute_cycles,off_access,on_access,on_hit_ratio\n")
+            f.write("batch_idx,memory_cycles,compute_cycles,total_accesses,offchip_accesses,onchip_accesses,on_hit_ratio\n")
             for nb, model in per_batch_memory_models:
                 if not model.execution_successful:
                     continue
-                
+
                 # Fetch memory and compute cycles
                 mem_cycles = model.offmem_cycles
                 comp_cycles = compute_time.total_compute_time_cycles
-                
+
                 # Fetch cache/buffer hit and miss from core_onmem_obj (handles global or local context correctly)
                 batch_hit, batch_miss = core_onmem_obj.access_results[nb]
-                off_access = batch_miss
-                on_access = batch_hit + batch_miss
-                on_hit_ratio = batch_hit / on_access if on_access > 0 else 0.0
-                
-                f.write(f"{nb},{mem_cycles},{comp_cycles},{off_access},{on_access},{on_hit_ratio:.4f}\n")
+                total_accesses = batch_hit + batch_miss
+                offchip_accesses = batch_miss
+                onchip_accesses = batch_hit
+                on_hit_ratio = batch_hit / total_accesses if total_accesses > 0 else 0.0
+
+                f.write(f"{nb},{mem_cycles},{comp_cycles},{total_accesses},{offchip_accesses},{onchip_accesses},{on_hit_ratio:.4f}\n")
         print(f"[INFO] Saved primary embedding metrics to {emb_csv_path}")
     except Exception as e:
         print(f"[WARNING] Could not write {emb_csv_path}: {e}")

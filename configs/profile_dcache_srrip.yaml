@@ -17,6 +17,8 @@ local_buffer:
   policy: dynamic_SRRIP
   access_granularity: 128
   access_latency: 1
+  RRPV_bits: 4
+  RRPV_insertion: 14
 
 global_buffer:
   mem_size: 0

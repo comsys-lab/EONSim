@@ -137,6 +137,11 @@ def _validate_config_values(
                 f"Invalid 'local_buffer.lfu_aging_interval': expected non-negative integer, got {lfu_aging_interval}"
             )
 
+    num_cores = core_row * core_col
+    if num_cores > num_tables:
+        print(f"[WARNING] num_cores ({num_cores}) > num_tables ({num_tables}): "
+              f"{num_cores - num_tables} core(s) will be idle.")
+
 
 def build_sim_config(args):
     debug = args.debug
@@ -216,12 +221,6 @@ def build_sim_config(args):
         os.makedirs(output_dir)
         if debug:
             print(f"[DEBUG] Created output directory: {output_dir}")
-
-    if args.this_output_dir_file:
-        with open(args.this_output_dir_file, "w") as f:
-            f.write(output_dir)
-        if debug:
-            print(f"[DEBUG] Wrote output directory handoff file: {args.this_output_dir_file}")
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     script_dir = os.path.dirname(script_dir)
