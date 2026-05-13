@@ -23,6 +23,7 @@ intermediate
 off_chip_memory_cycles_spad_off_1_batchsize.csv
 off_chip_memory_cycles_spad_off_1_tables.csv
 results
+results_before_config_change
 results_energy_207and215/
 results_onmem/
 results_val/
@@ -54,3 +55,7 @@ TODO.md
 tools/mNPUsim/mnpusim
 workload_configs/vdb.yaml
 configs/cache_OPT_twolevel.yaml
+
+### deprecated files
+src/_deprecated
+configs/_deprecated

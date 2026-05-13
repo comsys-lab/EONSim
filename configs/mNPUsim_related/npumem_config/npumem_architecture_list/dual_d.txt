@@ -1,2 +1,0 @@
-npumem_config/npumem_architecture/dual_d.cfg
-npumem_config/npumem_architecture/dual_d.cfg

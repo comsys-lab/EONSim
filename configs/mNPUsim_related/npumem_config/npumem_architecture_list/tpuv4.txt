@@ -1,1 +1,0 @@
-eonsim_config/npumem_config/npumem_architecture/tpuv4.cfg

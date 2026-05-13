@@ -23,13 +23,8 @@ class SimConfig:
     output_dir: str
     prof_period: int
     script_dir: str
-    offchip_memory_config: str
-    npumem_config: str
-    global_bandwidth_bytes_per_cycle: float
-    global_access_latency_cycles: int
     mnpusim_path: str
-    mnpusim_config_path: str
-    matrix_config_path: str
+    dram_ini_dir: str
     onchip_structure: str
     local_onmem_type: str
     local_onmem_policy: str
@@ -50,10 +45,20 @@ class SimConfig:
     vector_lanes: int
     vector_sublanes: int
     vector_alus_per_sublanes: int
-    mxu_dimension: int
+    mxu_sa_row: int
+    mxu_sa_col: int
     num_mxus: int
     output_filename: str
     warmup_batches: int
+    scalesim_hw_config: dict
+    mnpusim_params: dict
+    clock_frequency: int
+    bandwidth_gbps: float
+    offchip_latency_cycles: int
+    global_buf_bw_bytes_per_cycle: float
+    dram_config_name: str
+    dram_capacity_per_module: int
+    module_num: int
 
 
 def _ensure_positive_int(value, name):
@@ -104,6 +109,9 @@ def _validate_config_values(
     onmem_cache_config,
     core_row,
     core_col,
+    clock_frequency,
+    bandwidth_gbps,
+    offchip_latency,
 ):
     _ensure_positive_int(emb_dim, "embedding_dim")
     _ensure_positive_int(vectors_per_table, "vectors_per_table")
@@ -119,8 +127,15 @@ def _validate_config_values(
     _ensure_positive_int(onmem['mem_size'], "onmem.mem_size")
     _ensure_positive_int(onmem['mem_gran'], "onmem.access_granularity")
     _ensure_positive_int(onmem['mem_latency'], "onmem.access_latency")
-    _ensure_positive_int(core_row, "core_dim.row")
-    _ensure_positive_int(core_col, "core_dim.col")
+    _ensure_positive_int(core_row, "core_dim_row")
+    _ensure_positive_int(core_col, "core_dim_col")
+    _ensure_positive_int(clock_frequency, "accelerator_config.clock_frequency")
+    if not isinstance(bandwidth_gbps, (int, float)) or bandwidth_gbps <= 0:
+        raise ValueError(f"Invalid 'offchip_memory_config.bandwidth': expected positive number, got {bandwidth_gbps}")
+    if not isinstance(offchip_latency, int) or offchip_latency < 0:
+        raise ValueError(
+            f"Invalid 'offchip_memory_config.latency': expected non-negative integer, got {offchip_latency}"
+        )
 
     _validate_memory_policy(onmem['mem_type'], onmem['mem_policy'])
 
@@ -194,15 +209,6 @@ def build_sim_config(args):
             f"Invalid '--profiling-period': expected positive integer, got {args.profiling_period}"
         )
 
-    if args.global_bandwidth_bytes_per_cycle < 0:
-        raise ValueError(
-            "Invalid '--global-bandwidth-bytes-per-cycle': expected non-negative value"
-        )
-    if args.global_access_latency_cycles < 0:
-        raise ValueError(
-            "Invalid '--global-access-latency-cycles': expected non-negative integer"
-        )
-
     output_dir = Helper.build_output_dir(
         output_base_dir=args.output_base_dir,
         emb_dim=emb_dim,
@@ -212,8 +218,7 @@ def build_sim_config(args):
         batch_size=bsz,
         dataset_path=fname
     )
-    
-    # Append config_name as a subdirectory
+
     config_name = os.path.splitext(os.path.basename(args.memory_config))[0]
     output_dir = os.path.join(output_dir, config_name)
 
@@ -227,22 +232,17 @@ def build_sim_config(args):
     if debug:
         print(f"[DEBUG] script_dir: {script_dir}")
 
-    offchip_memory_config = args.offchip_memory_config
-    npumem_config = args.npumem_config
     mnpusim_path = os.path.join(os.path.dirname(script_dir), 'tools', 'mNPUsim')
     if debug:
         print(f"[DEBUG] mnpusim_path: {mnpusim_path}")
 
     config_path = os.path.join(os.path.dirname(script_dir), 'configs', f'{args.memory_config}.yaml')
-    mnpusim_config_path = os.path.join(os.path.dirname(script_dir), 'configs', 'mNPUsim_related')
-    matrix_config_path = os.path.join(os.path.dirname(script_dir), 'configs', 'scalesim_config', args.matrix_config)
+    dram_ini_dir = os.path.join(os.path.dirname(script_dir), 'configs', 'mNPUsim_single_dram_config')
 
     if debug:
         print(f"[DEBUG] memory_config_path: {config_path}")
     if debug:
-        print(f"[DEBUG] mnpusim_config_path: {mnpusim_config_path}")
-    if debug:
-        print(f"[DEBUG] matrix_config_path: {matrix_config_path}")
+        print(f"[DEBUG] dram_ini_dir: {dram_ini_dir}")
 
     mem_config = ConfigLoader.load_memory_config(config_path)
 
@@ -269,6 +269,12 @@ def build_sim_config(args):
     core_col = core_dim['col']
     num_cores = core_row * core_col
 
+    accelerator = mem_config['accelerator']
+    offchip = mem_config['offchip']
+    clock_frequency = accelerator['clock_frequency']
+    bandwidth_gbps = offchip['bandwidth_gbps']
+    offchip_latency = offchip['latency']
+
     _validate_config_values(
         emb_dim=emb_dim,
         vectors_per_table=vectors_per_table,
@@ -282,7 +288,21 @@ def build_sim_config(args):
         onmem_cache_config=cache_config,
         core_row=core_row,
         core_col=core_col,
+        clock_frequency=clock_frequency,
+        bandwidth_gbps=bandwidth_gbps,
+        offchip_latency=offchip_latency,
     )
+
+    # Verify the DRAMsim3 .ini referenced by offchip_memory_config.dram_config exists.
+    dram_ini_name = offchip['dram_config']
+    if not dram_ini_name:
+        raise ValueError("Missing 'offchip_memory_config.dram_config' in memory YAML")
+    dram_ini_path = os.path.join(dram_ini_dir, dram_ini_name)
+    if not os.path.exists(dram_ini_path):
+        raise FileNotFoundError(
+            f"DRAM .ini file not found: {dram_ini_path}. "
+            f"Check 'offchip_memory_config.dram_config' in {config_path}"
+        )
 
     vector_unit = mem_config['vector_unit']
     vector_lanes = vector_unit['lanes']
@@ -290,8 +310,15 @@ def build_sim_config(args):
     vector_alus_per_sublanes = vector_unit['alus_per_sublanes']
 
     matrix_unit = mem_config['matrix_unit']
-    mxu_dimension = matrix_unit['mxu_dimension']
-    num_mxus = matrix_unit['num_mxus']
+    mxu_sa_row = matrix_unit['sa_row']
+    mxu_sa_col = matrix_unit['sa_col']
+    num_mxus = num_cores  # derived: one MXU per core
+
+    # Convert global buffer bandwidth (GB/s) to bytes/cycle for global→local transfer modeling.
+    global_buf_bandwidth_gbps = global_buf.get('bandwidth', 0)
+    global_buf_bw_bytes_per_cycle = (
+        (global_buf_bandwidth_gbps * 1e9) / (clock_frequency * 1e6) if clock_frequency > 0 else 0.0
+    )
 
     if debug:
         print(f"[DEBUG] On-chip structure: {onchip_structure}")
@@ -300,7 +327,11 @@ def build_sim_config(args):
     if debug:
         print(f"[DEBUG] Vector Unit - Lanes: {vector_lanes}, Sublanes: {vector_sublanes}, ALUs per sublanes: {vector_alus_per_sublanes}")
     if debug:
-        print(f"[DEBUG] Matrix Unit - MXU dimension: {mxu_dimension}, Number of MXUs: {num_mxus}")
+        print(f"[DEBUG] Matrix Unit - sa_row: {mxu_sa_row}, sa_col: {mxu_sa_col}, num_mxus(derived): {num_mxus}")
+    if debug:
+        print(f"[DEBUG] Off-chip - bandwidth: {bandwidth_gbps} GB/s, latency: {offchip_latency} cycles")
+    if debug:
+        print(f"[DEBUG] Global Buffer - bandwidth: {global_buf_bandwidth_gbps} GB/s ({global_buf_bw_bytes_per_cycle:.2f} B/cycle), latency: {global_buf['mem_latency']} cycles")
     if debug:
         if onchip_structure == "local_only":
             print(
@@ -329,13 +360,8 @@ def build_sim_config(args):
         output_dir=output_dir,
         prof_period=args.profiling_period,
         script_dir=script_dir,
-        offchip_memory_config=offchip_memory_config,
-        npumem_config=npumem_config,
-        global_bandwidth_bytes_per_cycle=args.global_bandwidth_bytes_per_cycle,
-        global_access_latency_cycles=args.global_access_latency_cycles,
         mnpusim_path=mnpusim_path,
-        mnpusim_config_path=mnpusim_config_path,
-        matrix_config_path=matrix_config_path,
+        dram_ini_dir=dram_ini_dir,
         onchip_structure=onchip_structure,
         local_onmem_type=local_buf['mem_type'],
         local_onmem_policy=local_buf['mem_policy'],
@@ -356,8 +382,18 @@ def build_sim_config(args):
         vector_lanes=vector_lanes,
         vector_sublanes=vector_sublanes,
         vector_alus_per_sublanes=vector_alus_per_sublanes,
-        mxu_dimension=mxu_dimension,
+        mxu_sa_row=mxu_sa_row,
+        mxu_sa_col=mxu_sa_col,
         num_mxus=num_mxus,
         output_filename=args.output_filename or "",
         warmup_batches=warmup_batches,
+        scalesim_hw_config=mem_config['scalesim_hw_config'],
+        mnpusim_params=mem_config['mnpusim_params'],
+        clock_frequency=clock_frequency,
+        bandwidth_gbps=bandwidth_gbps,
+        offchip_latency_cycles=offchip_latency,
+        global_buf_bw_bytes_per_cycle=global_buf_bw_bytes_per_cycle,
+        dram_config_name=dram_ini_name,
+        dram_capacity_per_module=offchip['dram_capacity_per_module'],
+        module_num=offchip['module_num'],
     )

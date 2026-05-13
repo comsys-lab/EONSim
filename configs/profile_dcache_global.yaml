@@ -1,26 +1,37 @@
-core_dim:
-  row: 2
-  col: 2
+accelerator_config:
+  core_dim_row: 2
+  core_dim_col: 2
+  clock_frequency: 1050
 
-vector_unit:
-  lanes: 128
-  sublanes: 8
-  ALUs_per_sublanes: 4
+per_core_config:
+  matrix_unit:
+    sa_row: 128
+    sa_col: 128
+    dataflow: WS
 
-matrix_unit:
-  mxu_dimension: 128
-  num_mxus: 4
+  vector_unit:
+    lanes: 128
+    sublanes: 8
+    ALUs_per_sublanes: 4
 
-local_buffer:
-  mem_size: 0
-  mem_type: profile
-  policy: dynamic_cache
-  access_granularity: 128
-  access_latency: 1
+  local_buffer:
+    mem_size: 0
+    mem_type: profile
+    policy: dynamic_cache
+    access_granularity: 128
+    access_latency: 1
 
-global_buffer:
+global_buffer_config:
   mem_size: 131072
   mem_type: profile
   policy: dynamic_cache
   access_granularity: 128
   access_latency: 15
+  bandwidth: 2000
+
+offchip_memory_config:
+  latency: 100
+  bandwidth: 1200
+  dram_config: HBM3_16GB_TPUv5e.ini
+  dram_capacity_per_module: 17179869184
+  module_num: 2

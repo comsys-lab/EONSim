@@ -2,6 +2,29 @@ import yaml
 import os
 
 
+# mNPUsim fixed parameters that are not exposed through YAML.
+# These rarely change across experiments and would just clutter the user-facing config.
+_MNPUSIM_FIXED = {
+    "template": "arch_tpu_small.csv",
+    "pagebits": 12,
+    "npu_num": 1,
+    "dramoutdir_name": "dramsim_output",
+    "dram_log": 0,
+    "double_buffer": 1,
+    "npu_clockspeed": 1,
+    "dram_clockspeed": 1,
+    "tlb_assoc": 8,
+    "tlb_entrynum": 16,
+    "tlb_portnum": 0,
+    "tlb_pref_mode": 0,
+    "ptw_num": 8,
+    "pt_step_num": 1,
+}
+
+# Matrix-unit local buffer split (input:weight:output = 3:3:2, TPU-like).
+_MATRIX_BUFFER_SPLIT = (3, 3, 2)
+
+
 class ConfigLoader:
     def __init__(self, workload_config_base_path):
         self.base_path = workload_config_base_path
@@ -22,151 +45,157 @@ class ConfigLoader:
         return data
 
     @staticmethod
+    def _buffer_dict(buf_cfg):
+        mem_type = buf_cfg.get('mem_type', '') or ''
+        policy = buf_cfg.get('policy', '') or ''
+        mem_policy = f"{mem_type}_{policy}" if policy else mem_type
+
+        result = {
+            'mem_size': buf_cfg.get('mem_size', 0),
+            'mem_type': mem_type,
+            'mem_policy': mem_policy,
+            'mem_gran': buf_cfg.get('access_granularity', 0),
+            'mem_latency': buf_cfg.get('access_latency', 1),
+            'bandwidth': buf_cfg.get('bandwidth', 0),
+            'cache_way': 0,
+            'cache_line_size': buf_cfg.get('access_granularity', 0),
+            'rrpv_bits': 0,
+            'rrpv_insert': 0,
+            'lfu_counter_bits': 8,
+            'lfu_aging_interval': 0,
+        }
+
+        if mem_type == "cache":
+            result['cache_way'] = buf_cfg.get('cache_way', 0)
+
+        if mem_policy == 'cache_SRRIP':
+            result['rrpv_bits'] = buf_cfg.get('RRPV_bits', 0)
+            result['rrpv_insert'] = buf_cfg.get('RRPV_insertion', 0)
+        elif mem_policy == 'profile_dynamic_SRRIP':
+            result['rrpv_bits'] = buf_cfg.get('RRPV_bits', 4)
+            result['rrpv_insert'] = buf_cfg.get('RRPV_insertion', 14)
+
+        if mem_policy == 'cache_LFU':
+            result['lfu_counter_bits'] = buf_cfg.get('lfu_counter_bits', 8)
+            result['lfu_aging_interval'] = buf_cfg.get('lfu_aging_interval', 0)
+
+        return result
+
+    @staticmethod
+    def _cache_config_view(buf_result):
+        return {
+            'way': buf_result['cache_way'],
+            'line_size': buf_result['cache_line_size'],
+            'rrpv_bits': buf_result['rrpv_bits'],
+            'rrpv_insert': buf_result['rrpv_insert'],
+            'lfu_counter_bits': buf_result['lfu_counter_bits'],
+            'lfu_aging_interval': buf_result['lfu_aging_interval'],
+        }
+
+    @staticmethod
+    def _build_scalesim_hw_config(accel, matrix_unit, bandwidth_gbps, latency, matrix_total_buf_kb):
+        pool_bytes = int(matrix_total_buf_kb) * 1024
+        split_total = sum(_MATRIX_BUFFER_SPLIT)
+        input_share, weight_share, output_share = _MATRIX_BUFFER_SPLIT
+        return {
+            'pod_row': int(accel.get('core_dim_row', 1)),
+            'pod_col': int(accel.get('core_dim_col', 1)),
+            'freq': int(accel.get('clock_frequency', 0)),
+            'bw': int(bandwidth_gbps),
+            'latency': int(latency),
+            'dataflow': matrix_unit.get('dataflow', 'WS'),
+            'sa_row': int(matrix_unit.get('sa_row', 0)),
+            'sa_col': int(matrix_unit.get('sa_col', 0)),
+            'input_buf_size': pool_bytes * input_share // split_total,
+            'weight_buf_size': pool_bytes * weight_share // split_total,
+            'output_buf_size': pool_bytes * output_share // split_total,
+            'global_buf_size': pool_bytes,
+        }
+
+    @staticmethod
+    def _build_mnpusim_params(local_buf, offchip):
+        params = dict(_MNPUSIM_FIXED)
+        params.update({
+            'spm_size': int(local_buf.get('mem_size', 0)) * 1024,
+            'cacheline_size': int(local_buf.get('access_granularity', 0)),
+            'spm_latency': int(local_buf.get('access_latency', 1)),
+            'tlb_hit_latency': int(offchip.get('latency', 0)),
+            'tlb_miss_latency': int(offchip.get('latency', 0)),
+            'dram_unit': int(local_buf.get('access_granularity', 0)),
+            'dram_capacity_per_module': int(offchip.get('dram_capacity_per_module', 0)),
+            'module_num': int(offchip.get('module_num', 1)),
+            'dram_config': offchip.get('dram_config', ''),
+        })
+        return params
+
+    @staticmethod
     def load_memory_config(memory_config_path):
         if not os.path.exists(memory_config_path):
             raise FileNotFoundError(f"Memory config file not found: {memory_config_path}")
 
         with open(memory_config_path, 'r') as yaml_cfg:
-            config_data = yaml.safe_load(yaml_cfg)
+            data = yaml.safe_load(yaml_cfg)
 
-        if not isinstance(config_data, dict):
+        if not isinstance(data, dict):
             raise ValueError(f"Malformed memory config: expected YAML object at root in {memory_config_path}")
 
-        result = {}
+        accel = data.get('accelerator_config', {}) or {}
+        per_core = data.get('per_core_config', {}) or {}
+        global_buf_cfg = data.get('global_buffer_config', {}) or {}
+        offchip = data.get('offchip_memory_config', {}) or {}
 
-        core_dim_config = config_data.get('core_dim', {})
-        result['core_dim'] = {
-            'row': core_dim_config.get('row', 2),
-            'col': core_dim_config.get('col', 2)
+        matrix_unit = per_core.get('matrix_unit', {}) or {}
+        vector_unit = per_core.get('vector_unit', {}) or {}
+        local_buf_cfg = per_core.get('local_buffer', {}) or {}
+
+        local_buffer = ConfigLoader._buffer_dict(local_buf_cfg)
+        global_buffer = ConfigLoader._buffer_dict(global_buf_cfg)
+
+        # Total on-chip buffer available to the matrix unit.
+        # two_level: uses global_buffer size — TODO: analytical model for two_level matrix buf split needs revisiting
+        matrix_total_buf_kb = global_buffer['mem_size'] if global_buffer['mem_size'] > 0 else local_buffer['mem_size']
+        bandwidth_gbps = float(offchip.get('bandwidth', 0))
+        latency = int(offchip.get('latency', 0))
+
+        scalesim_hw_config = ConfigLoader._build_scalesim_hw_config(
+            accel, matrix_unit, bandwidth_gbps, latency, matrix_total_buf_kb
+        )
+        mnpusim_params = ConfigLoader._build_mnpusim_params(local_buf_cfg, offchip)
+
+        return {
+            'accelerator': {
+                'core_dim_row': int(accel.get('core_dim_row', 1)),
+                'core_dim_col': int(accel.get('core_dim_col', 1)),
+                'clock_frequency': int(accel.get('clock_frequency', 0)),
+            },
+            'core_dim': {
+                'row': int(accel.get('core_dim_row', 1)),
+                'col': int(accel.get('core_dim_col', 1)),
+            },
+            'matrix_unit': {
+                'sa_row': int(matrix_unit.get('sa_row', 0)),
+                'sa_col': int(matrix_unit.get('sa_col', 0)),
+                'dataflow': matrix_unit.get('dataflow', 'WS'),
+            },
+            'vector_unit': {
+                'lanes': int(vector_unit.get('lanes', 128)),
+                'sublanes': int(vector_unit.get('sublanes', 8)),
+                'alus_per_sublanes': int(vector_unit.get('ALUs_per_sublanes', 4)),
+            },
+            'local_buffer': local_buffer,
+            'global_buffer': global_buffer,
+            'cache_config': ConfigLoader._cache_config_view(local_buffer),
+            'global_cache_config': ConfigLoader._cache_config_view(global_buffer),
+            'offchip': {
+                'latency': latency,
+                'bandwidth_gbps': bandwidth_gbps,
+                'dram_config': offchip.get('dram_config', ''),
+                'dram_capacity_per_module': int(offchip.get('dram_capacity_per_module', 0)),
+                'module_num': int(offchip.get('module_num', 1)),
+            },
+            'scalesim_hw_config': scalesim_hw_config,
+            'mnpusim_params': mnpusim_params,
         }
-
-        local_buffer_config = config_data.get('local_buffer', {})
-        if not local_buffer_config:
-            local_buffer_config = config_data.get('memory', {})
-
-        onmem_size = local_buffer_config.get('mem_size', 0)
-        onmem_type = local_buffer_config.get('mem_type', '')
-        policy = local_buffer_config.get('policy', '')
-        onmem_policy = onmem_type + '_' + policy if policy else onmem_type
-        onmem_gran = local_buffer_config.get('access_granularity', 0)
-        onmem_latency = local_buffer_config.get('access_latency', 1)
-
-        cache_way = 0
-        cache_line_size = 0
-        rrpv_bits = 0
-        rrpv_insert = 0
-        lfu_counter_bits = 8
-        lfu_aging_interval = 0
-
-        if onmem_type == "cache":
-            cache_way = local_buffer_config.get('cache_way', 0)
-            cache_line_size = onmem_gran
-
-        if onmem_policy == 'cache_SRRIP':
-            rrpv_bits = local_buffer_config.get('RRPV_bits', 0)
-            rrpv_insert = local_buffer_config.get('RRPV_insertion', 0)
-        elif onmem_policy == 'profile_dynamic_SRRIP':
-            rrpv_bits = local_buffer_config.get('RRPV_bits', 4)
-            rrpv_insert = local_buffer_config.get('RRPV_insertion', 14)
-
-        if onmem_policy == 'cache_LFU':
-            lfu_counter_bits = local_buffer_config.get('lfu_counter_bits', 8)
-            lfu_aging_interval = local_buffer_config.get('lfu_aging_interval', 0)
-
-        result['local_buffer'] = {
-            'mem_size': onmem_size,
-            'mem_type': onmem_type,
-            'mem_policy': onmem_policy,
-            'mem_gran': onmem_gran,
-            'mem_latency': onmem_latency,
-            'cache_way': cache_way,
-            'cache_line_size': cache_line_size,
-            'rrpv_bits': rrpv_bits,
-            'rrpv_insert': rrpv_insert,
-            'lfu_counter_bits': lfu_counter_bits,
-            'lfu_aging_interval': lfu_aging_interval,
-        }
-        result['cache_config'] = {
-            'way': cache_way,
-            'line_size': cache_line_size,
-            'rrpv_bits': rrpv_bits,
-            'rrpv_insert': rrpv_insert,
-            'lfu_counter_bits': lfu_counter_bits,
-            'lfu_aging_interval': lfu_aging_interval,
-        }
-
-        global_buffer_config = config_data.get('global_buffer', {})
-        global_onmem_size = 0
-        global_onmem_type = None
-        global_onmem_policy = None
-        global_onmem_gran = 0
-        global_onmem_latency = 15
-        global_cache_way = 0
-        global_cache_line_size = 0
-        global_rrpv_bits = 0
-        global_rrpv_insert = 0
-        global_lfu_counter_bits = 8
-        global_lfu_aging_interval = 0
-
-        if global_buffer_config:
-            global_onmem_size = global_buffer_config.get('mem_size', 0)
-            global_onmem_type = global_buffer_config.get('mem_type', '')
-            global_policy = global_buffer_config.get('policy', '')
-            global_onmem_policy = global_onmem_type + '_' + global_policy if global_policy else global_onmem_type
-            global_onmem_gran = global_buffer_config.get('access_granularity', 0)
-            global_onmem_latency = global_buffer_config.get('access_latency', 15)
-
-            if global_onmem_type == "cache":
-                global_cache_way = global_buffer_config.get('cache_way', 0)
-                global_cache_line_size = global_onmem_gran
-
-            if global_onmem_policy == 'cache_SRRIP':
-                global_rrpv_bits = global_buffer_config.get('RRPV_bits', 0)
-                global_rrpv_insert = global_buffer_config.get('RRPV_insertion', 0)
-            elif global_onmem_policy == 'profile_dynamic_SRRIP':
-                global_rrpv_bits = global_buffer_config.get('RRPV_bits', 4)
-                global_rrpv_insert = global_buffer_config.get('RRPV_insertion', 14)
-
-            if global_onmem_policy == 'cache_LFU':
-                global_lfu_counter_bits = global_buffer_config.get('lfu_counter_bits', 8)
-                global_lfu_aging_interval = global_buffer_config.get('lfu_aging_interval', 0)
-
-        result['global_buffer'] = {
-            'mem_size': global_onmem_size,
-            'mem_type': global_onmem_type,
-            'mem_policy': global_onmem_policy,
-            'mem_gran': global_onmem_gran,
-            'mem_latency': global_onmem_latency,
-            'cache_way': global_cache_way,
-            'cache_line_size': global_cache_line_size,
-            'rrpv_bits': global_rrpv_bits,
-            'rrpv_insert': global_rrpv_insert,
-            'lfu_counter_bits': global_lfu_counter_bits,
-            'lfu_aging_interval': global_lfu_aging_interval,
-        }
-        result['global_cache_config'] = {
-            'way': global_cache_way,
-            'line_size': global_cache_line_size,
-            'rrpv_bits': global_rrpv_bits,
-            'rrpv_insert': global_rrpv_insert,
-            'lfu_counter_bits': global_lfu_counter_bits,
-            'lfu_aging_interval': global_lfu_aging_interval,
-        }
-
-        vector_unit_config = config_data.get('vector_unit', {})
-        result['vector_unit'] = {
-            'lanes': vector_unit_config.get('lanes', 128),
-            'sublanes': vector_unit_config.get('sublanes', 8),
-            'alus_per_sublanes': vector_unit_config.get('ALUs_per_sublanes', 4)
-        }
-
-        matrix_unit_config = config_data.get('matrix_unit', {})
-        result['matrix_unit'] = {
-            'mxu_dimension': matrix_unit_config.get('mxu_dimension', 128),
-            'num_mxus': matrix_unit_config.get('num_mxus', 4)
-        }
-
-        return result
 
     def get_embedding_config(self):
         emb_config = self.config.get('embedding_layer', {})

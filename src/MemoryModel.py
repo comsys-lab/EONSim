@@ -11,9 +11,8 @@ class MemoryModel:
         script_dir,
         offmem_trace,
         mnpusim_path,
-        mnpusim_config_path,
-        offchip_memory_config,
-        npumem_config,
+        dram_ini_dir,
+        mnpusim_params,
         global_bw_bytes_per_cycle=0,
         global_latency_cycles=0,
         onchip_structure="global_only",
@@ -28,13 +27,15 @@ class MemoryModel:
         self.offmem_trace = offmem_trace
         self.intermediate_dir = None
         self.mnpusim_path = mnpusim_path
-        self.mnpusim_config_path = mnpusim_config_path
-        self.offchip_memory_config = offchip_memory_config
-        self.npumem_config = npumem_config
+        self.dram_ini_dir = dram_ini_dir
+        self.mnpusim_params = dict(mnpusim_params) if mnpusim_params else {}
         self.eonsim_results_dir = None
         self.eonsim_results_dir_name = None
         self.eonsim_config_dir = None
         self.eonsim_dir_name = None
+        # Relative paths (from mNPUsim root) to the cfg files generated per run.
+        self.generated_dram_config_relpath = None
+        self.generated_npumem_list_relpath = None
         self.debug = debug
 
         # Analytical model parameters.
@@ -218,37 +219,105 @@ class MemoryModel:
         return offmem_trace_path
         
     def setup_eonsim_config_directory(self):
-        """Create per-run config dir and symlink static config trees."""
+        """Create per-run config dir. Symlink the DRAMsim3 .ini tree; generate everything else."""
         self.eonsim_config_dir = tempfile.mkdtemp(prefix="eonsim_config_", dir=self.mnpusim_path)
         self.eonsim_dir_name = os.path.basename(self.eonsim_config_dir)
 
-        dram_config_dest = os.path.join(self.eonsim_config_dir, "dram_config")
-        npumem_config_dest = os.path.join(self.eonsim_config_dir, "npumem_config")
+        # Symlink the DRAMsim3 .ini directory into the per-run config tree.
+        if not os.path.exists(self.dram_ini_dir):
+            raise FileNotFoundError(f"DRAM .ini directory not found: {self.dram_ini_dir}")
+        dram_config_dir = os.path.join(self.eonsim_config_dir, "dram_config")
+        os.makedirs(dram_config_dir, exist_ok=True)
+        os.symlink(
+            os.path.abspath(self.dram_ini_dir),
+            os.path.join(dram_config_dir, "single_dram_config"),
+        )
+        if self.debug:
+            print(f"[DEBUG] Symlinked single_dram_config -> {self.dram_ini_dir}")
 
-        dram_config_src = os.path.join(self.mnpusim_config_path, "dram_config")
-        npumem_config_src = os.path.join(self.mnpusim_config_path, "npumem_config")
+        # Empty dirs for generated cfg/txt files.
+        os.makedirs(os.path.join(dram_config_dir, "total_dram_config"), exist_ok=True)
+        npumem_dir = os.path.join(self.eonsim_config_dir, "npumem_config")
+        os.makedirs(os.path.join(npumem_dir, "npumem_architecture"), exist_ok=True)
+        os.makedirs(os.path.join(npumem_dir, "npumem_architecture_list"), exist_ok=True)
 
-        if not os.path.exists(dram_config_src):
-            raise FileNotFoundError(f"dram_config source directory not found: {dram_config_src}")
-        if not os.path.exists(npumem_config_src):
-            raise FileNotFoundError(f"npumem_config source directory not found: {npumem_config_src}")
+        self.generated_dram_config_relpath = self._generate_dram_config()
+        self.generated_npumem_list_relpath = self._generate_npumem_config()
 
-        os.symlink(os.path.abspath(dram_config_src), dram_config_dest)
-        os.symlink(os.path.abspath(npumem_config_src), npumem_config_dest)
+    def _generate_dram_config(self):
+        """Write total_dram_config/generated.cfg from mnpusim_params; return mNPUsim-relative path."""
+        rel_dir = os.path.join("dram_config", "total_dram_config")
+        cfg_path = os.path.join(self.eonsim_config_dir, rel_dir, "generated.cfg")
 
-        if self.debug: print(f"[DEBUG] Symlinked dram_config: {dram_config_dest} -> {dram_config_src}")
-        if self.debug: print(f"[DEBUG] Symlinked npumem_config: {npumem_config_dest} -> {npumem_config_src}")
+        ini_rel = os.path.join(self.eonsim_dir_name, "dram_config", "single_dram_config",
+                               self.mnpusim_params.get("dram_config", ""))
+        p = self.mnpusim_params
+
+        lines = [
+            f"dramconfig_name     {ini_rel}",
+            f"spm_latency         {p.get('spm_latency', 1)}",
+            f"pagebits            {p.get('pagebits', 12)}",
+            f"npu_num             {p.get('npu_num', 1)}",
+            f"dramoutdir_name     {p.get('dramoutdir_name', 'dramsim_output')}",
+            f"dram_unit           {p.get('dram_unit', 128)}",
+            f"dram_log            {p.get('dram_log', 0)}",
+            f"dram_capacity       {p.get('dram_capacity_per_module', 0)}",
+            f"module_num          {p.get('module_num', 1)}",
+        ]
+        with open(cfg_path, "w") as f:
+            f.write("\n".join(lines) + "\n")
+
+        if self.debug:
+            print(f"[DEBUG] Generated DRAM config: {cfg_path}")
+        return os.path.join(self.eonsim_dir_name, rel_dir, "generated.cfg")
+
+    def _generate_npumem_config(self):
+        """Write npumem_architecture/generated.cfg and list .txt; return list-file mNPUsim-relative path."""
+        arch_rel_dir = os.path.join("npumem_config", "npumem_architecture")
+        list_rel_dir = os.path.join("npumem_config", "npumem_architecture_list")
+        arch_cfg_path = os.path.join(self.eonsim_config_dir, arch_rel_dir, "generated.cfg")
+        list_txt_path = os.path.join(self.eonsim_config_dir, list_rel_dir, "generated.txt")
+
+        p = self.mnpusim_params
+        arch_lines = [
+            f"template            {p.get('template', 'arch_tpu_small.csv')}",
+            f"spm_size            {p.get('spm_size', 0)}",
+            f"cacheline_size      {p.get('cacheline_size', 128)}",
+            f"tlb_hit_latency     {p.get('tlb_hit_latency', 0)}",
+            f"tlb_miss_latency    {p.get('tlb_miss_latency', 0)}",
+            f"tlb_assoc           {p.get('tlb_assoc', 8)}",
+            f"tlb_entrynum        {p.get('tlb_entrynum', 16)}",
+            f"tlb_portnum         {p.get('tlb_portnum', 0)}",
+            f"spm_latency         {p.get('spm_latency', 1)}",
+            f"double_buffer       {p.get('double_buffer', 1)}",
+            f"npu_clockspeed      {p.get('npu_clockspeed', 1)}",
+            f"dram_clockspeed     {p.get('dram_clockspeed', 1)}",
+            f"tlb_pref_mode       {p.get('tlb_pref_mode', 0)}",
+            f"ptw_num             {p.get('ptw_num', 8)}",
+            f"pt_step_num         {p.get('pt_step_num', 1)}",
+        ]
+        with open(arch_cfg_path, "w") as f:
+            f.write("\n".join(arch_lines) + "\n")
+
+        # List file points at the generated architecture cfg via the mNPUsim-relative path.
+        arch_relpath = os.path.join(self.eonsim_dir_name, arch_rel_dir, "generated.cfg")
+        with open(list_txt_path, "w") as f:
+            f.write(arch_relpath + "\n")
+
+        if self.debug:
+            print(f"[DEBUG] Generated npumem arch cfg: {arch_cfg_path}")
+            print(f"[DEBUG] Generated npumem list txt: {list_txt_path}")
+        return os.path.join(self.eonsim_dir_name, list_rel_dir, "generated.txt")
         
     def execute_mnpusim(self, trace_file_path):
         """Execute mNPUsim with proper environment setup"""
-        # Build runtime config paths relative to mNPUsim root.
-        dram_config_path = os.path.join(self.eonsim_dir_name, self.offchip_memory_config)
-        npumem_config_path = os.path.join(self.eonsim_dir_name, self.npumem_config)
-        
+        # Runtime config paths (already relative to mNPUsim root) come from the cfg generators.
+        dram_config_path = self.generated_dram_config_relpath
+        npumem_config_path = self.generated_npumem_list_relpath
+
         if self.debug: print(f"[DEBUG] Using DRAM config: {dram_config_path}")
         if self.debug: print(f"[DEBUG] Using NPU memory config: {npumem_config_path}")
-        
-        # Verify that the config files exist in the mNPUsim directory
+
         full_dram_config_path = os.path.join(self.mnpusim_path, dram_config_path)
         full_npumem_config_path = os.path.join(self.mnpusim_path, npumem_config_path)
         
@@ -371,8 +440,7 @@ class MemoryModel:
     def do_memory_simulation(self):
         """Main method to run the complete memory simulation pipeline"""
         if self.debug: print("[DEBUG] Starting off-chip memory simulation...")
-        if self.debug: print(f"[DEBUG] Requested off-chip DRAM config: {self.offchip_memory_config}")
-        if self.debug: print(f"[DEBUG] Requested NPU memory config: {self.npumem_config}")
+        if self.debug: print(f"[DEBUG] Requested DRAM .ini: {self.mnpusim_params.get('dram_config', '')}")
 
         try:
             # Setup and run simulation pipeline.

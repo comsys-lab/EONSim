@@ -3,7 +3,7 @@ import numpy as np
 from helper_modules.Helper import print_styled_header, print_styled_box
 
 class RuntimeModel:
-    def __init__(self, workload_type, emb_dim, num_tables, bsz, num_indices_per_lookup, n_format_byte, vector_lanes, vector_sublanes, vector_alus_per_sublanes, mxu_dimension, num_mxus, onchip_config=None, debug=False):
+    def __init__(self, workload_type, emb_dim, num_tables, bsz, num_indices_per_lookup, n_format_byte, vector_lanes, vector_sublanes, vector_alus_per_sublanes, mxu_sa_row, mxu_sa_col, num_mxus, onchip_config=None, debug=False):
         print("\n\n\n START COMPUTATION TIME CALCULATION \n")
 
         self.debug = bool(debug)
@@ -16,7 +16,8 @@ class RuntimeModel:
         self.vector_lanes = vector_lanes
         self.vector_sublanes = vector_sublanes
         self.vector_alus_per_sublanes = vector_alus_per_sublanes
-        self.mxu_dimension = mxu_dimension
+        self.mxu_sa_row = mxu_sa_row
+        self.mxu_sa_col = mxu_sa_col
         self.num_mxus = num_mxus
         self.onchip_config = dict(onchip_config) if onchip_config else {}
 
@@ -149,6 +150,6 @@ class RuntimeModel:
         print(f"- ALUs per Sublane: {self.vector_alus_per_sublanes}")
         
         print("\nMatrix Unit:")
-        print(f"- MXU Dimension: {self.mxu_dimension}")
+        print(f"- MXU Dimension: {self.mxu_sa_row} x {self.mxu_sa_col}")
         print(f"- Number of MXUs: {self.num_mxus}")
         print("=============================================\n")

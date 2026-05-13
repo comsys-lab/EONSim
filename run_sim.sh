@@ -21,7 +21,6 @@ dataset_list=("dlrm/reuse_high_test.txt") # "dlrm/reuse_high_test.txt" "dlrm/reu
 
 ### simulation parameters ###
 MEM_CFG=$1
-MATRIX_CFG="tpuv6e.cfg"
 
 NUM_BATCH=2
 BS=256
@@ -75,7 +74,6 @@ for dataset in "${dataset_list[@]}"; do
         --batch-size $BS \
         --data-generation=$DATA_GEN_PATH \
         --memory-config=$MEM_CFG \
-        --matrix-config=$MATRIX_CFG \
         --profiling-period $PROF_PERIOD \
         --warmup-batches $WARMUP_BATCHES \
         --output-filename "$OUTPUT_FILENAME" \

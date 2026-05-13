@@ -48,17 +48,6 @@ def parse_args():
     # Output base directory
     parser.add_argument("--output-base-dir", type=str, default="results", help="Base directory for output results")
 
-    # Matrix ops. config
-    parser.add_argument("--matrix-config", type=str, default="tpuv6e.cfg", help="Matrix configuration file name")
-
-    # mNPUsim related parameters
-    parser.add_argument("--offchip-memory-config", type=str, default="dram_config/total_dram_config/single_hbm3_819gbs.cfg")
-    parser.add_argument("--npumem-config", type=str, default="npumem_config/npumem_architecture_list/tpuv6e.txt")
-
-    # Analytical memory-model parameters.
-    parser.add_argument("--global-bandwidth-bytes-per-cycle", type=float, default=2000.0)
-    parser.add_argument("--global-access-latency-cycles", type=int, default=21)
-
     # debug flag
     parser.add_argument("--debug", action="store_true", default=False, help="Enable debug prints")
 
@@ -190,11 +179,10 @@ if __name__ == "__main__":
             sim_cfg.script_dir,
             offmem_trace[nb],          # single-batch trace slice
             sim_cfg.mnpusim_path,
-            sim_cfg.mnpusim_config_path,
-            sim_cfg.offchip_memory_config,
-            sim_cfg.npumem_config,
-            global_bw_bytes_per_cycle=sim_cfg.global_bandwidth_bytes_per_cycle,
-            global_latency_cycles=sim_cfg.global_access_latency_cycles,
+            sim_cfg.dram_ini_dir,
+            mnpusim_params=sim_cfg.mnpusim_params,
+            global_bw_bytes_per_cycle=sim_cfg.global_buf_bw_bytes_per_cycle,
+            global_latency_cycles=sim_cfg.global_onmem_latency,
             onchip_structure=sim_cfg.onchip_structure,
             local_onmem_size_kb=sim_cfg.local_onmem_size,
             mem_gran=sim_cfg.mem_gran,
@@ -226,7 +214,8 @@ if __name__ == "__main__":
         sim_cfg.vector_lanes,
         sim_cfg.vector_sublanes,
         sim_cfg.vector_alus_per_sublanes,
-        sim_cfg.mxu_dimension,
+        sim_cfg.mxu_sa_row,
+        sim_cfg.mxu_sa_col,
         sim_cfg.num_mxus,
         onchip_config={
             "onchip_structure": sim_cfg.onchip_structure,
@@ -284,8 +273,8 @@ if __name__ == "__main__":
         
         run_matrix_simulation(
             sim_cfg.matrix_ops_csv_path,
-            sim_cfg.matrix_config_path,
-            mnk_flag="gemm", 
+            sim_cfg.scalesim_hw_config,
+            mnk_flag="gemm",
             output_dir=sim_cfg.output_dir,
             output_filename=sim_cfg.output_filename,
             debug=sim_cfg.debug

@@ -5,28 +5,26 @@ from . import matrix_single_core_sim
 from .matrix_single_core_sim import scale_up_runtime, scale_up_buf_access, scale_up_off_access
 
 class accelerator:
-    def __init__(self, topology_path, configuration_path, mnk_flag, output_dir=None, output_filename=None, debug=False):
+    def __init__(self, topology_path, hw_config, mnk_flag, output_dir=None, output_filename=None, debug=False):
         self.topology_path = ""
-        self.configuration_path = ""
         self.mnk_flag = "mnk"
         self.output_dir = output_dir
         self.output_filename = output_filename
         self.layer_result_table = {}  # Cache for previously simulated layers
         self.pod_result_table = {}    # Cache for previously simulated pod MNKs
-        
+
         self.debug = debug
         self.dprint = print if debug else lambda *a, **k: None
         matrix_single_core_sim.DEBUG = debug
 
-        self.setup_params(topology_path, configuration_path, mnk_flag)
-    
-    def setup_params(self, topology_path, configuration_path, mnk_flag):
+        self.setup_params(topology_path, hw_config, mnk_flag)
+
+    def setup_params(self, topology_path, hw_config, mnk_flag):
         self.topology_path = topology_path
-        self.configuration_path = configuration_path
         self.mnk_flag = mnk_flag
-        
+
         self.setup_topo()
-        self.setup_hw()
+        self.setup_hw(hw_config)
     
     def conv_to_mnk(self, this_line):
         ''' 
@@ -87,79 +85,22 @@ class accelerator:
         self.dprint(f"Number of layers: {self.num_layers}")
         self.dprint(f"MNK Topology: {self.mnk_topo}")
     
-    def setup_hw(self):
-        """
-        Reads hardware configuration from the specified file and stores parameters in a dictionary.
-        The configuration file should have sections for NPU_others and NPU_systolic.
-        """
-        self.hw_config = {}
-        
-        try:
-            with open(self.configuration_path, 'r') as config_file:
-                current_section = None
-                
-                for line in config_file:
-                    line = line.strip()
-                    
-                    # Skip empty lines and comments
-                    if not line or line.startswith('//'):
-                        continue
-                    
-                    # Check for section headers
-                    if line.startswith('[') and line.endswith(']'):
-                        current_section = line[1:-1]
-                        continue
-                    
-                    # Process key-value pairs
-                    if ':' in line:
-                        key, value = [item.strip() for item in line.split(':', 1)]
-                        
-                        if current_section == 'NPU_others':
-                            if key == 'pod_dimension_row':
-                                self.hw_config['pod_row'] = int(value)
-                            elif key == 'pod_dimension_col':
-                                self.hw_config['pod_col'] = int(value)
-                            elif key == 'clock_frequency':
-                                self.hw_config['freq'] = int(value)
-                            elif key == 'bandwidth':
-                                self.hw_config['bw'] = int(value)
-                            elif key == 'latency':
-                                self.hw_config['latency'] = int(value)
-                            elif key == 'dataflow':
-                                self.hw_config['dataflow'] = value
-                            
-                        elif current_section == 'NPU_systolic':
-                            if key == 'row':
-                                self.hw_config['sa_row'] = int(value)
-                            elif key == 'col':
-                                self.hw_config['sa_col'] = int(value)
-                            elif key == 'input_buffer':
-                                self.hw_config['input_buf_size'] = int(value) * 1024 # Convert to unit of bytes
-                            elif key == 'weight_buffer':
-                                self.hw_config['weight_buf_size'] = int(value) * 1024 # Convert to unit of bytes
-                            elif key == 'output_buffer':
-                                self.hw_config['output_buf_size'] = int(value) * 1024 # Convert to unit of bytes
-                            elif key == 'global_buffer':
-                                self.hw_config['global_buf_size'] = int(value) * 1024 # Convert to unit of bytes
-            
-            # Print the configuration values for testing
-            self.dprint("Hardware Configuration:")
-            for key, value in self.hw_config.items():
-                self.dprint(f"  {key}: {value}")
-                
-            # Verify that all required keys are present
-            required_keys = [
-                'pod_row', 'pod_col', 'freq', 'bw', 'latency', 'dataflow',
-                'sa_row', 'sa_col', 'input_buf_size', 'weight_buf_size', 'output_buf_size'
-            ]
-            
-            missing_keys = [key for key in required_keys if key not in self.hw_config]
-            if missing_keys:
-                print(f"Warning: Missing configuration parameters: {', '.join(missing_keys)}")
-                
-        except Exception as e:
-            print(f"Error reading configuration file: {e}")
-            self.hw_config = {}  # Reset configuration if there's an error
+    def setup_hw(self, hw_config):
+        self.hw_config = dict(hw_config) if hw_config else {}
+
+        self.dprint("Hardware Configuration:")
+        for key, value in self.hw_config.items():
+            self.dprint(f"  {key}: {value}")
+
+        required_keys = [
+            'pod_row', 'pod_col', 'freq', 'bw', 'latency', 'dataflow',
+            'sa_row', 'sa_col', 'input_buf_size', 'weight_buf_size', 'output_buf_size',
+            'global_buf_size',
+        ]
+
+        missing_keys = [key for key in required_keys if key not in self.hw_config]
+        if missing_keys:
+            raise ValueError(f"Missing hw_config parameters: {', '.join(missing_keys)}")
 
     def skip_redundant_layer(self, this_layer):
         # Convert the MNK values of the current layer to a tuple of integers to use as a hashable key
@@ -462,34 +403,18 @@ class accelerator:
         return runtime_this_layer
 
     def save_results(self):
-        """
-        Save the simulation results to a CSV file in a subdirectory named after the topology.
-        """
-        # Get the topology name from the path (without extension)
         topology_name = os.path.splitext(os.path.basename(self.topology_path))[0]
-        
+
         if self.output_dir:
             output_dir = self.output_dir
         else:
-            # Set output directory to 'results/topology_name' in the parent directory of the config file
-            output_dir = os.path.join(
-                os.path.dirname(os.path.dirname(self.configuration_path)), 
-                'results', 
-                topology_name
-            )
-        
-        # Create the directory if it doesn't exist
+            output_dir = os.path.join('results', topology_name)
+
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-            
-        # output file = this_path/results/topology_name/this_configuration_name_results.csv
-        if self.output_filename is not None:
-            output_file = os.path.join(output_dir, "matrix_results" + self.output_filename + ".csv")
-        else:
-            output_file = os.path.join(
-                output_dir, 
-                self.configuration_path.split('/')[-1].replace('.cfg', '_results.csv')
-            )
+
+        suffix = self.output_filename if self.output_filename else ""
+        output_file = os.path.join(output_dir, f"matrix_results{suffix}.csv")
         
         with open(output_file, 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)

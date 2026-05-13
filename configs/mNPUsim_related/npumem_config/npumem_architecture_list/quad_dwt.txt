@@ -1,4 +1,0 @@
-npumem_config/npumem_architecture/quad_dwt.cfg
-npumem_config/npumem_architecture/quad_dwt.cfg
-npumem_config/npumem_architecture/quad_dwt.cfg
-npumem_config/npumem_architecture/quad_dwt.cfg
