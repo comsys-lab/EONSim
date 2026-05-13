@@ -45,4 +45,4 @@ class LFU_module:
 
         self.freq[tag] = 1
         self.recency.insert_node(tag)
-        return False, victim
+        return False, None

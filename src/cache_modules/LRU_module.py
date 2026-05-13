@@ -53,7 +53,6 @@ class LRU_module:
         self._add_to_front(new_node)
         self.size += 1
         
-        # Evict LRU if over capacity
         if self.size > self.cache_way:
             lru_node = self.tail.prev
             self._remove_node(lru_node)

@@ -60,38 +60,6 @@ class CoreAccessIterator:
 
 class CoreOnmem:
     def __init__(self, mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table=0, mem_gran=0, prof_period=1, mem_latency=1, num_cores=1, onchip_structure="global_only", local_onmem_config=None, global_onmem_config=None, index_trace=None, debug=False):
-        self.mem_size = 0
-        self.mem_type = "init"
-        self.mem_policy = "init"
-        self.mem_latency = 1
-        self.on_mem = np.ones(1)
-        self.batch_counter = 0
-        self.profile_batch_counter = 0
-        self.profile_filter = np.ones(1)
-        
-        self.emb_dim = 0
-        self.emb_dataset = np.ones(1)
-        
-        self.addr_bits = 64  # set address width here
-        self.cache_way = 0
-        self.cache_line_size = 0
-        self.cache_set = 0
-        self.cache_tag_bits = 0
-        self.cache_config = {}
-        self.n_format_byte = 0        
-        self.rrpv_bits = 0
-        self.rrpv_insert = 0
-        self.lfu_counter_bits = 8
-        self.lfu_aging_interval = 0
-        
-        self.mem_gran = mem_gran
-        self.prof_period = prof_period
-        self.vectors_per_table = 0
-
-        self.access_results = []
-        self.spad_load_results = []
-        
-        # Multicore configuration
         self.num_cores = num_cores
         self.onchip_structure = onchip_structure
         self.debug = debug
@@ -100,21 +68,26 @@ class CoreOnmem:
         self.local_onmem_config = dict(local_onmem_config) if local_onmem_config else {}
         self.global_onmem_config = dict(global_onmem_config) if global_onmem_config else {}
         self.index_trace = index_trace
-        
-        self.set_params(mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table, mem_gran, prof_period, mem_latency)
-        
-    def set_params(self, mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table=0, mem_gran=0, prof_period=1, mem_latency=1):
-        self.mem_size = mem_size * 1024 # KB -> Byte
-        self.mem_type = mem_type # spad or cache
-        self.mem_latency = mem_latency  # Access latency in cycles
-        
-        # below configs are related to the dataset
+
+        self.mem_policy = "init"
+        self.on_mem = np.ones(1)
+        self.batch_counter = 0
+        self.profile_batch_counter = 0
+        self.access_results = []
+        self.spad_load_results = []
+
+        self.addr_bits = 64  # set address width here
+
+        self.mem_size = mem_size * 1024  # KB -> Byte
+        self.mem_type = mem_type
+        self.mem_latency = mem_latency
         self.emb_dim = emb_dim
         self.emb_dataset = emb_dataset
-        
         self.n_format_byte = n_format_byte
+        self.mem_gran = mem_gran
+        self.prof_period = prof_period
+        self.vectors_per_table = vectors_per_table
 
-        # Validate workload address space fits within addr_bits
         if mem_gran > 0 and emb_dim > 0 and n_format_byte > 0 and vectors_per_table > 0 and emb_dataset:
             num_tables = len(emb_dataset[0])
             access_per_vector = max(1, int(np.ceil(emb_dim * n_format_byte / mem_gran)))
@@ -125,15 +98,25 @@ class CoreOnmem:
                     f"but addr_bits={self.addr_bits}. Adjust addr_bits in CoreOnmem.__init__()."
                 )
 
+        self.cache_config = {}
+        self.cache_way = 0
+        self.cache_line_size = 0
+        self.cache_set = 0
+        self.cache_index_bits = 0
+        self.cache_offset_bits = 0
+        self.cache_tag_bits = 0
+        self.rrpv_bits = 0
+        self.rrpv_insert = 0
+        self.lfu_counter_bits = 8
+        self.lfu_aging_interval = 0
+
         if self.mem_type == "cache":
             self.cache_config = dict(cache_config)
-            # below configs are only for cache configurations
             self.cache_way = self.cache_config.get('way', 0)
             self.cache_line_size = self.cache_config.get('line_size', 0)
             self.cache_set = int(self.mem_size / self.cache_line_size / self.cache_way)
-            # Fix: Use ceiling of log2 to handle non-power-of-2 cache sets
             self.cache_index_bits = int(np.ceil(np.log2(self.cache_set))) if self.cache_set > 1 else 0
-            self.cache_offset_bits = int(np.log2(self.cache_line_size-1)+1) # byte offset
+            self.cache_offset_bits = int(np.log2(self.cache_line_size-1)+1)
             self.cache_tag_bits = self.addr_bits - self.cache_index_bits - self.cache_offset_bits
             if self.cache_tag_bits <= 0:
                 raise ValueError(
@@ -147,10 +130,6 @@ class CoreOnmem:
             self.lfu_aging_interval = self.cache_config.get('lfu_aging_interval', 0)
         elif self.mem_type == "profile":
             self.cache_config = dict(cache_config)
-            self.mem_gran = mem_gran
-            self.prof_period = prof_period
-            self.vectors_per_table = vectors_per_table
-
             # Preserve legacy profiling defaults when cache fields are not provided.
             self.cache_way = self.cache_config.get('way', 0) or 128
             self.cache_line_size = self.cache_config.get('line_size', 0) or mem_gran
@@ -166,10 +145,6 @@ class CoreOnmem:
                 )
             self.rrpv_bits = self.cache_config.get('rrpv_bits', 0)
             self.rrpv_insert = self.cache_config.get('rrpv_insert', 0)
-        elif self.mem_type == "spad":
-            self.mem_gran = mem_gran
-            self.prof_period = prof_period
-            self.vectors_per_table = vectors_per_table
 
         self.offmem_trace = [[np.full_like(self.emb_dataset[nb][nt], -1) for nt in range(len(self.emb_dataset[nb]))] for nb in range(len(self.emb_dataset))]
         if self.debug: print("[DEBUG] self.offmem_trace shape: ({}, {}, {})".format(len(self.offmem_trace), len(self.offmem_trace[0]), len(self.offmem_trace[0][0])))

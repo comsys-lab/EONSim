@@ -4,40 +4,9 @@ from helper_modules.Helper import print_styled_header, print_styled_box
 
 class RuntimeModel:
     def __init__(self, workload_type, emb_dim, num_tables, bsz, num_indices_per_lookup, n_format_byte, vector_lanes, vector_sublanes, vector_alus_per_sublanes, mxu_dimension, num_mxus, onchip_config=None, debug=False):
-        
         print("\n\n\n START COMPUTATION TIME CALCULATION \n")
-        
-        self.workload_type = None
-        self.emb_dim = 0
-        self.num_tables = 0
-        self.bsz = 0
-        self.num_indices_per_lookup = 0
-        self.n_format_byte = 4
-        self.vector_lanes = 0
-        self.vector_sublanes = 0
-        self.vector_alus_per_sublanes = 0
-        self.mxu_dimension = 0
-        self.num_mxus = 0
-        self.debug = bool(debug)
 
-        # On-chip config metadata (interface only)
-        self.onchip_config = {}
-        
-        # Computation time calculation results
-        self.compute_time_results = []
-        self.total_compute_time_cycles = 0
-        self.vload_cycles = 0
-        self.vadd_cycles = 0
-        self.vector_compute_cycles = 0
-        self.num_candidate_vectors = 0
-        self.l2_sub_ops = 0
-        self.l2_mul_ops = 0
-        self.l2_acc_ops = 0
-        
-        self.set_params(workload_type, emb_dim, num_tables, bsz, num_indices_per_lookup, n_format_byte, vector_lanes, vector_sublanes, vector_alus_per_sublanes, mxu_dimension, num_mxus, onchip_config)
-    
-    def set_params(self, workload_type, emb_dim, num_tables, bsz, num_indices_per_lookup, n_format_byte, vector_lanes, vector_sublanes, vector_alus_per_sublanes, mxu_dimension, num_mxus, onchip_config=None):
-        print(f"Setting parameters for computation time model...")
+        self.debug = bool(debug)
         self.workload_type = workload_type
         self.emb_dim = emb_dim
         self.num_tables = num_tables
@@ -50,6 +19,16 @@ class RuntimeModel:
         self.mxu_dimension = mxu_dimension
         self.num_mxus = num_mxus
         self.onchip_config = dict(onchip_config) if onchip_config else {}
+
+        self.compute_time_results = []
+        self.total_compute_time_cycles = 0
+        self.vload_cycles = 0
+        self.vadd_cycles = 0
+        self.vector_compute_cycles = 0
+        self.num_candidate_vectors = 0
+        self.l2_sub_ops = 0
+        self.l2_mul_ops = 0
+        self.l2_acc_ops = 0
     
     def do_runtime_calculation(self):
         print(f"Calculating computation time model...")
@@ -136,24 +115,9 @@ class RuntimeModel:
         self.print_stats()
         
     def print_stats(self):
-        # print_styled_header("Runtime Model Results")
         
         # Prepare content as a list of strings
         content_lines = []
-        
-        # Basic configuration
-        # content_lines.append(f"Workload Type: {self.workload_type}")
-        # content_lines.append(f"Embedding Dimension: {self.emb_dim}")
-        # content_lines.append(f"Number of Tables: {self.num_tables}")
-        # content_lines.append(f"Batch Size: {self.bsz}")
-        # content_lines.append(f"Number of Indices per Lookup: {self.num_indices_per_lookup}")
-        # content_lines.append("")  # Empty line for spacing
-        
-        # Hardware configuration
-        # content_lines.append("Hardware Configuration:")
-        # content_lines.append(f"  Vector Unit - Lanes: {self.vector_lanes}, Sublanes: {self.vector_sublanes}, ALUs per Sublane: {self.vector_alus_per_sublanes}")
-        # content_lines.append(f"  Matrix Unit - MXU Dimension: {self.mxu_dimension}, Number of MXUs: {self.num_mxus}")
-        # content_lines.append("")  # Empty line for spacing
         
         # Computation time results
         content_lines.append(f"Total Computation Time: {self.total_compute_time_cycles} cycles")

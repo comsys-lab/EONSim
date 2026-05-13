@@ -1,7 +1,6 @@
 from helper_modules.Helper import Helper, print_styled_box
 from ReqGenerator import ReqGenerator
 from CoreOnmem_multicore import CoreOnmem
-# from helper_modules.EnergyEstimator import EnergyEstimator
 from RuntimeModel import RuntimeModel
 from MemoryModel import MemoryModel
 from helper_modules.ConfigBuilder import build_sim_config
@@ -42,8 +41,7 @@ def parse_args():
     parser.add_argument("--data-generation", type=str, default="./datasets/reuse_high/table_1M.txt")
     parser.add_argument("--num-batches", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=1024)
-    # `profiling-period` is the canonical name; keep multiplier alias for backward compatibility.
-    parser.add_argument("--profiling-period", "--profiling-multiplier", dest="profiling_period", type=int, default=1)
+    parser.add_argument("--profiling-period", type=int, default=1)
     parser.add_argument("--warmup-batches", type=int, default=0, help="Number of leading batches excluded from memory/runtime simulation")
     parser.add_argument("--output-filename", type=str, default=None, help="Filename for simulation results (without extension)")
 
@@ -155,7 +153,6 @@ if __name__ == "__main__":
     )
     core_onmem_obj.set_policy(sim_cfg.mem_policy)
     core_onmem_obj.print_config()
-    # print("on mem data structure size: {:.2f} KB".format(sys.getsizeof(core_onmem_obj.on_mem)/1024))
     
     helper.end_timer("create memory structure")
 

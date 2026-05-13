@@ -34,10 +34,9 @@ class LRUPolicy(OnmemPolicy):
 
     def handle_access(self, tag, index):
         if self.on_mem[index].search_and_access(tag):
-            return True, None  # Hit
-        else:
-            victim = self.on_mem[index].insert_node(tag)
-            return False, victim  # Miss
+            return True, None
+        self.on_mem[index].insert_node(tag)
+        return False, None
 
 class SRRIPPolicy(OnmemPolicy):
     def __init__(self, cache_config):
@@ -278,15 +277,15 @@ class OptPolicy(OnmemPolicy):
         victim_way, _ = self._pop_farthest_way(index)
         if victim_way is None:
             raise RuntimeError("OPT victim selection failed: no valid heap entry")
-        victim = int(self.on_mem[index, victim_way])
+        victim_tag = int(self.on_mem[index, victim_way])
 
-        del set_map[victim]
+        del set_map[victim_tag]
         self.on_mem[index, victim_way] = tag
         self.on_mem_next_use[index, victim_way] = current_next_use
         set_map[tag] = victim_way
         self._push_way_state(index, victim_way)
 
-        return False, victim
+        return False, None
 
     def post_access_processing(self, hit, tag, index, vec):
         self.curr_cycle += 1

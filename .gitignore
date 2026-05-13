@@ -49,6 +49,7 @@ datasets/vectordb/trivia_seq_100m.txt
 ### temp
 EONSIM_IMPLEMENTATION.md
 PERF_MODEL_IMPLEMENTATION.md
+REMAINING_ISSUES.md
 TODO.md
 tools/mNPUsim/mnpusim
 workload_configs/vdb.yaml

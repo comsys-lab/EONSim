@@ -51,36 +51,20 @@ def _process_batch_worker(args):
 class ReqGenerator:
     def __init__(self, nbatches, n_format_byte, embsize, emb_dim, bsz, fname, num_indices_per_lookup, mem_gran, debug=False):
         self.dataset_gen = None
-        # sparse feature (sparse indices)
-        self.lS_emb_offsets = []
-        self.lS_emb_indices = []
         self.lS_o = []
         self.lS_i = []
         self.addr_trace = []
-        
-        self.nbatches = 0
-        self.n_format_byte = 0
-        self.embsize = 0
-        self.emb_dim = 0
-        self.bsz = 0
-        self.fname = ""
-        self.num_indices_per_lookup = 0
-        
-        self.mem_gran = 0
         self.debug = debug
 
-        self.set_params(nbatches, n_format_byte, embsize, emb_dim, bsz, fname, num_indices_per_lookup, mem_gran)
-        
-    def set_params(self, nbatches, n_format_byte, embsize, emb_dim, bsz, fname, num_indices_per_lookup, mem_gran):
         self.nbatches = nbatches
-        self.n_format_byte = n_format_byte # numeric format bits -> bytes
+        self.n_format_byte = n_format_byte
         self.embsize = embsize
         self.emb_dim = emb_dim
         self.bsz = bsz
         self.fname = fname
         self.num_indices_per_lookup = num_indices_per_lookup
         self.mem_gran = mem_gran
-        
+
         self.access_per_vector = np.ceil(self.emb_dim * self.n_format_byte / self.mem_gran).astype(np.int32)
         
     def open_gen(self, name, rows):
@@ -98,35 +82,30 @@ class ReqGenerator:
     def trace_read_input_batch(self, ln_emb):
         cur_gen = self.get_gen(ln_emb[0])
 
-        self.lS_emb_offsets = []
-        self.lS_emb_indices = []
-        #RJ: for each table
+        lS_emb_offsets = []
+        lS_emb_indices = []
         for size in ln_emb:
             lS_batch_offsets = []
             lS_batch_indices = []
             offset = 0
-            #RJ: goto each sample
             for _ in range(self.bsz):
-                #pooling factor for each sample
                 sparse_group_size = np.int64(self.num_indices_per_lookup)
-                # store lengths and indices
                 lS_batch_offsets += [offset]
                 lS_batch_indices += [x for _, x in zip(range(sparse_group_size), cur_gen)]
-                # update offset for next iteration
                 offset += sparse_group_size
-            self.lS_emb_offsets.append(np.array(lS_batch_offsets, dtype=np.int64))
-            self.lS_emb_indices.append(np.array(lS_batch_indices, dtype=np.int64))
+            lS_emb_offsets.append(np.array(lS_batch_offsets, dtype=np.int64))
+            lS_emb_indices.append(np.array(lS_batch_indices, dtype=np.int64))
 
-        return (self.lS_emb_offsets, self.lS_emb_indices)
+        return (lS_emb_offsets, lS_emb_indices)
 
     def data_gen(self):
-        ln_emb = np.fromstring(self.embsize, dtype=int, sep="-") # memo ln_emb represents the number of tables
-        ln_emb = np.asarray(ln_emb, dtype=np.int32) # shape of ln_emb is (num_tables,)
+        ln_emb = np.fromstring(self.embsize, dtype=int, sep="-")
+        ln_emb = np.asarray(ln_emb, dtype=np.int32)
 
         for j in range(0, self.nbatches):
-            self.lS_emb_offsets, self.lS_emb_indices = self.trace_read_input_batch(ln_emb)
-            self.lS_o.append(self.lS_emb_offsets)
-            self.lS_i.append(self.lS_emb_indices)
+            offsets, indices = self.trace_read_input_batch(ln_emb)
+            self.lS_o.append(offsets)
+            self.lS_i.append(indices)
             
     def index_to_addr(self):
         # init addr_trace array

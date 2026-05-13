@@ -358,6 +358,6 @@ def build_sim_config(args):
         vector_alus_per_sublanes=vector_alus_per_sublanes,
         mxu_dimension=mxu_dimension,
         num_mxus=num_mxus,
-        output_filename=args.output_filename,
+        output_filename=args.output_filename or "",
         warmup_batches=warmup_batches,
     )
