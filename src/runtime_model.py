@@ -1,6 +1,6 @@
 import yaml
 import numpy as np
-from helper_modules.Helper import print_styled_header, print_styled_box
+from helper_modules.helper import print_styled_header, print_styled_box
 
 class RuntimeModel:
     def __init__(self, workload_type, emb_dim, num_tables, bsz, num_indices_per_lookup, n_format_byte, vector_lanes, vector_sublanes, vector_alus_per_sublanes, mxu_sa_row, mxu_sa_col, num_mxus, onchip_config=None, debug=False):

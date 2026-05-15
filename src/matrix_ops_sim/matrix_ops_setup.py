@@ -4,7 +4,7 @@ import os
 from . import matrix_single_core_sim
 from .matrix_single_core_sim import scale_up_runtime, scale_up_buf_access, scale_up_off_access
 
-class accelerator:
+class Accelerator:
     def __init__(self, topology_path, hw_config, mnk_flag, output_dir=None, output_filename=None, debug=False):
         self.topology_path = ""
         self.mnk_flag = "mnk"

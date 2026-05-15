@@ -1,7 +1,7 @@
-from cache_modules.LRU_module import LRU_module
+from cache_modules.lru_module import LRUModule
 
 
-class LFU_module:
+class LFUModule:
     """Set-local LFU state with LRU tie-breaking."""
 
     def __init__(self, cache_way, counter_bits=8, aging_interval=0):
@@ -11,7 +11,7 @@ class LFU_module:
         self.max_counter = (1 << counter_bits) - 1
 
         self.freq = {}
-        self.recency = LRU_module(cache_way)
+        self.recency = LRUModule(cache_way)
         self.access_counter = 0
 
     def _apply_aging(self):

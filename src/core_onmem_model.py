@@ -1,7 +1,7 @@
 import numpy as np
 from tqdm import tqdm
-from helper_modules.Helper import print_styled_header, print_styled_box
-from policies import LRUPolicy, SRRIPPolicy, LFUPolicy, OptPolicy, SpadPolicy, ProfilePolicy
+from helper_modules.helper import print_styled_header, print_styled_box
+from onmem_policies import LRUPolicy, SRRIPPolicy, LFUPolicy, OptPolicy, SpmPolicy, ProfilePolicy
 
 class CoreAccessIterator:
     """Iterator for a core's memory accesses in table-partitioned multicore simulation"""
@@ -74,7 +74,7 @@ class CoreOnmem:
         self.batch_counter = 0
         self.profile_batch_counter = 0
         self.access_results = []
-        self.spad_load_results = []
+        self.spm_load_results = []
 
         self.addr_bits = 64  # set address width here
 
@@ -192,10 +192,10 @@ class CoreOnmem:
                 self.on_mem = [policy.on_mem for policy in self.core_policies]
             else:
                 raise NotImplementedError(f"Unknown on-chip structure: {self.onchip_structure}")
-        elif self.mem_type == "spad":
-            if not policy.startswith("spad_"):
+        elif self.mem_type == "spm":
+            if not policy.startswith("spm_"):
                 raise ValueError(f"Invalid policy: '{policy}' for mem_type: '{self.mem_type}'")
-            self.policy = SpadPolicy(self.mem_size, self.mem_gran, self.emb_dim, self.n_format_byte, self.emb_dataset, self.vectors_per_table, self.prof_period, self.mem_policy, self.num_cores, debug=self.debug)
+            self.policy = SpmPolicy(self.mem_size, self.mem_gran, self.emb_dim, self.n_format_byte, self.emb_dataset, self.vectors_per_table, self.prof_period, self.mem_policy, self.num_cores, debug=self.debug)
             self.policy.initialize()
             self.on_mem = self.policy.on_mem
         elif self.mem_type == "profile":
@@ -338,8 +338,8 @@ class CoreOnmem:
         for nb in range(len(self.emb_dataset)):
             print(f"Processing batch {nb}...")
 
-            if self.mem_type == 'spad':
-                batch_hit, batch_miss, core_batch_stats = self._simulate_spad_batch(nb, table_ranges)
+            if self.mem_type == 'spm':
+                batch_hit, batch_miss, core_batch_stats = self._simulate_spm_batch(nb, table_ranges)
             elif self.mem_type == 'cache':
                 batch_hit, batch_miss, core_batch_stats = self._simulate_cache_batch(nb, table_ranges)
             elif self.mem_type == 'profile':
@@ -375,7 +375,7 @@ class CoreOnmem:
         total_accesses = sum(it.total_accesses for it in core_iterators)
         return core_iterators, total_accesses
 
-    def _simulate_spad_batch(self, nb, table_ranges):
+    def _simulate_spm_batch(self, nb, table_ranges):
         batch_hit = 0
         batch_miss = 0
         core_batch_stats = [[0, 0] for _ in range(self.num_cores)]
@@ -404,11 +404,11 @@ class CoreOnmem:
                     pbar.update(1)
 
         # Update on_mem for oracle policy after each batch.
-        if self.mem_policy == "spad_oracle":
+        if self.mem_policy == "spm_oracle":
             self.batch_counter = min(self.batch_counter + 1, len(self.emb_dataset) - 1)
             self.policy.batch_counter = self.batch_counter
             if self.batch_counter % self.prof_period == 0:
-                self.on_mem = self.policy.set_spad()
+                self.on_mem = self.policy.set_spm()
 
         return batch_hit, batch_miss, core_batch_stats
 

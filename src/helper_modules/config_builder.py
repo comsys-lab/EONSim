@@ -2,8 +2,8 @@ from dataclasses import dataclass
 import numpy as np
 import os
 
-from .Helper import Helper
-from .ConfigLoader import ConfigLoader
+from .helper import Helper
+from .config_loader import ConfigLoader
 
 
 @dataclass
@@ -69,7 +69,7 @@ def _ensure_positive_int(value, name):
 def _validate_memory_policy(mem_type, mem_policy):
     supported_policies = {
         "cache": {"cache_LRU", "cache_SRRIP", "cache_LFU", "cache_OPT"},
-        "spad": {"spad_naive", "spad_random", "spad_oracle"},
+        "spm": {"spm_naive", "spm_random", "spm_oracle"},
         "profile": {"profile_dynamic_cache", "profile_dynamic_SRRIP", "profile_dynamic_count"},
     }
 

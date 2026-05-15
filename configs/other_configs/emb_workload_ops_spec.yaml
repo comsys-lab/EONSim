@@ -4,7 +4,7 @@ dlrm:
     op_type: "vadd"
     access_per_op: 170
     num_op: 169
-wikipedia:
+tf_emb:
   num_op_types: 0
 vectordb:
   num_op_types: 4

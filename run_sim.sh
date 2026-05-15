@@ -22,7 +22,7 @@ dataset_list=("dlrm/reuse_high_test.txt") # "dlrm/reuse_high_test.txt" "dlrm/reu
 ### simulation parameters ###
 MEM_CFG=$1
 
-NUM_BATCH=2
+NUM_BATCH=1
 BS=256
 
 # EONSim skips memory simulation for the warmup batches to speed up the simulation. 
@@ -41,7 +41,7 @@ for dataset in "${dataset_list[@]}"; do
     DATA_GEN_PATH=$data_path_dir$dataset
     
     # Resolve target base output directory before running simulator.
-    BASE_TARGET_DIR=$(python3 src/helper_modules/Helper.py \
+    BASE_TARGET_DIR=$(python3 src/helper_modules/helper.py \
         --resolve-output-dir \
         --workload-config "$WORKLOAD_CONFIG" \
         --output-base-dir "$OUT" \

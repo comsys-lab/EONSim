@@ -1,6 +1,6 @@
 import yaml
 import numpy as np
-from helper_modules.Helper import print_styled_header, print_styled_box
+from helper_modules.helper import print_styled_header, print_styled_box
 
 class DataTypeEnergy:
     def __init__(self, config_dict):
@@ -23,41 +23,41 @@ class OpConfig:
         self.num_op = int(config_dict['num_op'])
 
 class EnergyEstimator:
-    def __init__(self, workload_type, workload_config_path, tech_node, energy_table_path, energy_n_format, access_results, access_per_batch, mem_gran):
-        
+    def __init__(self, workload_type, emb_workload_ops_spec_path, tech_node, energy_table_path, energy_n_format, access_results, access_per_batch, mem_gran):
+
         print("\n\n\n START ENERGY ESTIMATION \n")
-        
-        self.workload_config = None
-        self.workload_config_path = None
+
+        self.emb_workload_ops_spec = None
+        self.emb_workload_ops_spec_path = None
         self.tech_node = 0
         self.energy_table_path = None
         self.energy_n_format = None
         self.access_results = None
         self.access_per_batch = 0
         self.mem_gran = 0
-        
-        self.set_params(workload_type, workload_config_path, tech_node, energy_table_path, energy_n_format, access_results, access_per_batch, mem_gran)
-        self.set_workload_config()
+
+        self.set_params(workload_type, emb_workload_ops_spec_path, tech_node, energy_table_path, energy_n_format, access_results, access_per_batch, mem_gran)
+        self.set_emb_workload_ops_spec()
         self.set_energy_table()
 
-    def set_params(self, workload_type, workload_config_path, tech_node, energy_table_path, energy_n_format, access_results, access_per_batch, mem_gran):
+    def set_params(self, workload_type, emb_workload_ops_spec_path, tech_node, energy_table_path, energy_n_format, access_results, access_per_batch, mem_gran):
         print(f"Setting parameters for energy estimation...")
         self.workload_type = workload_type
-        self.workload_config_path = workload_config_path
+        self.emb_workload_ops_spec_path = emb_workload_ops_spec_path
         self.tech_node = tech_node
         self.energy_table_path = energy_table_path
         self.energy_n_format = energy_n_format
         self.access_results = access_results
         self.access_per_batch = access_per_batch
         self.mem_gran = mem_gran
-    
-    def set_workload_config(self):
-        print(f"Setting workload configuration...")
-        with open(self.workload_config_path, 'r') as file:
-            self.workload_config = yaml.safe_load(file)
-            
+
+    def set_emb_workload_ops_spec(self):
+        print(f"Setting embedding workload ops spec...")
+        with open(self.emb_workload_ops_spec_path, 'r') as file:
+            self.emb_workload_ops_spec = yaml.safe_load(file)
+
         # Get workload specific configuration
-        workload_spec = self.workload_config[self.workload_type]
+        workload_spec = self.emb_workload_ops_spec[self.workload_type]
         self.num_op_types = int(workload_spec['num_op_types'])
         
         # Parse operation configurations

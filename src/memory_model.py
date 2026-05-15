@@ -3,7 +3,7 @@ import subprocess
 import shutil
 import math
 import tempfile
-from helper_modules.Helper import print_styled_box
+from helper_modules.helper import print_styled_box
 
 class MemoryModel:
     def __init__(

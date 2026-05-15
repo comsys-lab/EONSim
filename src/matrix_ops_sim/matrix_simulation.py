@@ -6,7 +6,7 @@ import time
 def run_matrix_simulation(topology_path, hw_config, mnk_flag="gemm", output_dir=None, output_filename=None, debug=False):
     start_time = time.time()
 
-    accelerator = matrix_ops_setup.accelerator(topology_path, hw_config, mnk_flag, output_dir, output_filename, debug)
+    accelerator = matrix_ops_setup.Accelerator(topology_path, hw_config, mnk_flag, output_dir, output_filename, debug)
     accelerator.do_simulation()
 
     end_time = time.time()

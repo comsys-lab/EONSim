@@ -16,15 +16,15 @@ per_core_config:
 
   local_buffer:
     mem_size: 131072
-    mem_type: spad
-    policy: oracle
+    mem_type: spm
+    policy: random
     access_granularity: 128
     access_latency: 1
 
 global_buffer_config:
   mem_size: 0
-  mem_type: spad
-  policy: oracle
+  mem_type: spm
+  policy: random
   access_granularity: 128
   access_latency: 15
   bandwidth: 2000

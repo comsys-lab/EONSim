@@ -1,9 +1,9 @@
-from helper_modules.Helper import Helper, print_styled_box
-from ReqGenerator import ReqGenerator
-from CoreOnmem_multicore import CoreOnmem
-from RuntimeModel import RuntimeModel
-from MemoryModel import MemoryModel
-from helper_modules.ConfigBuilder import build_sim_config
+from helper_modules.helper import Helper, print_styled_box
+from req_generator import ReqGenerator
+from core_onmem_model import CoreOnmem
+from runtime_model import RuntimeModel
+from memory_model import MemoryModel
+from helper_modules.config_builder import build_sim_config
 from matrix_ops_sim.matrix_simulation import run_matrix_simulation
 import argparse
 import numpy as np
@@ -32,7 +32,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="EONSim")
 
     # memory config
-    parser.add_argument("--memory-config", type=str, default="spad_naive")
+    parser.add_argument("--memory-config", type=str, default="spm_naive")
 
     # workload config
     parser.add_argument("--workload-config", type=str, required=True, help="Path to workload config (without extension)")

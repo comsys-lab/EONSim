@@ -31,9 +31,9 @@ class Helper:
     @staticmethod
     def resolve_output_dir_from_workload(output_base_dir, workload_config_base_path, batch_size, dataset_path=None):
         try:
-            from .ConfigLoader import ConfigLoader
+            from .config_loader import ConfigLoader
         except ImportError:
-            from ConfigLoader import ConfigLoader
+            from config_loader import ConfigLoader
 
         cfg_loader = ConfigLoader(workload_config_base_path)
         emb_conf = cfg_loader.get_embedding_config()

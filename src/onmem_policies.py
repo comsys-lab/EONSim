@@ -1,9 +1,9 @@
 from collections import Counter
 import numpy as np
 import heapq
-from cache_modules.LRU_module import LRU_module
-from cache_modules.LFU_module import LFU_module
-from cache_modules.SRRIP_module import SRRIP_module
+from cache_modules.lru_module import LRUModule
+from cache_modules.lfu_module import LFUModule
+from cache_modules.srrip_module import SRRIPModule
 import itertools
 from tqdm import tqdm
 import random
@@ -30,7 +30,7 @@ class OnmemPolicy:
 
 class LRUPolicy(OnmemPolicy):
     def initialize(self):
-        self.on_mem = [LRU_module(self.cache_way) for _ in range(self.cache_set)]
+        self.on_mem = [LRUModule(self.cache_way) for _ in range(self.cache_set)]
 
     def handle_access(self, tag, index):
         if self.on_mem[index].search_and_access(tag):
@@ -45,7 +45,7 @@ class SRRIPPolicy(OnmemPolicy):
         self.rrpv_insert = cache_config['rrpv_insert']
 
     def initialize(self):
-        self.on_mem = [SRRIP_module(self.cache_way, self.rrpv_bits, self.rrpv_insert) for _ in range(self.cache_set)]
+        self.on_mem = [SRRIPModule(self.cache_way, self.rrpv_bits, self.rrpv_insert) for _ in range(self.cache_set)]
 
     def handle_access(self, tag, index):
         return self.on_mem[index].access(tag), None
@@ -59,7 +59,7 @@ class LFUPolicy(OnmemPolicy):
 
     def initialize(self):
         self.on_mem = [
-            LFU_module(self.cache_way, self.counter_bits, self.aging_interval)
+            LFUModule(self.cache_way, self.counter_bits, self.aging_interval)
             for _ in range(self.cache_set)
         ]
 
@@ -290,8 +290,8 @@ class OptPolicy(OnmemPolicy):
     def post_access_processing(self, hit, tag, index, vec):
         self.curr_cycle += 1
 
-class SpadPolicy(OnmemPolicy):
-    def __init__(self, mem_size, mem_gran, emb_dim, n_format_byte, emb_dataset, vectors_per_table, prof_period, spad_policy, num_cores=1, debug=False):
+class SpmPolicy(OnmemPolicy):
+    def __init__(self, mem_size, mem_gran, emb_dim, n_format_byte, emb_dataset, vectors_per_table, prof_period, spm_policy, num_cores=1, debug=False):
         self.mem_size = mem_size
         self.mem_gran = mem_gran
         self.emb_dim = emb_dim
@@ -299,43 +299,43 @@ class SpadPolicy(OnmemPolicy):
         self.emb_dataset = emb_dataset
         self.vectors_per_table = vectors_per_table
         self.prof_period = prof_period
-        self.spad_policy = spad_policy
+        self.spm_policy = spm_policy
         self.num_cores = num_cores
         self.debug = debug
         self.num_tables = len(self.emb_dataset[0])
         self.access_per_vector = np.ceil(self.emb_dim * self.n_format_byte / self.mem_gran).astype(np.int32)
-        self.spad_size = np.floor(self.mem_size / self.mem_gran).astype(np.int32)
+        self.spm_size = np.floor(self.mem_size / self.mem_gran).astype(np.int32)
         self.batch_counter = 0
 
     def initialize(self):
-        self.on_mem = self.set_spad()
+        self.on_mem = self.set_spm()
 
     def handle_access(self, tag, index):
-        # SPAD policies operate on the entire `on_mem` set, not on a per-index basis.
+        # SPM policies operate on the entire `on_mem` set, not on a per-index basis.
         # The "tag" here is the actual address.
         return tag in self.on_mem, None
 
-    def set_spad(self):
-        if self.spad_policy == "spad_naive":
-            return self.set_spad_naive()
-        elif self.spad_policy == "spad_random":
-            return self.set_spad_random()
-        elif self.spad_policy == "spad_oracle":
-            return self.set_spad_oracle()
+    def set_spm(self):
+        if self.spm_policy == "spm_naive":
+            return self.set_spm_naive()
+        elif self.spm_policy == "spm_random":
+            return self.set_spm_random()
+        elif self.spm_policy == "spm_oracle":
+            return self.set_spm_oracle()
         else:
-            raise NotImplementedError(f"SPAD policy {self.spad_policy} not implemented")
+            raise NotImplementedError(f"SPM policy {self.spm_policy} not implemented")
 
-    def set_spad_naive(self):
+    def set_spm_naive(self):
         on_mem_set = []
         vector_bytes = self.emb_dim * self.n_format_byte
         vector_stride = ((vector_bytes + self.mem_gran - 1) // self.mem_gran) * self.mem_gran
-        
+
         # Partition tables across cores (same logic as CoreOnmem._partition_tables_across_cores)
         tables_per_core = self.num_tables // self.num_cores
         remainder = self.num_tables % self.num_cores
-        vectors_per_core = self.spad_size // self.num_cores
-        
-        with tqdm(total=self.spad_size, desc="Setting spad") as pbar:
+        vectors_per_core = self.spm_size // self.num_cores
+
+        with tqdm(total=self.spm_size, desc="Setting spm") as pbar:
             counter = 0
             start_idx = 0
             
@@ -367,21 +367,21 @@ class SpadPolicy(OnmemPolicy):
                                 break
                         if break_flag: break
                     if break_flag: break
-                
+
                 # Move to next core's table range
                 start_idx = table_end
-        
-        if self.debug: print(f"[DEBUG] Total loaded to spad: {len(on_mem_set)} addresses")
+
+        if self.debug: print(f"[DEBUG] Total loaded to spm: {len(on_mem_set)} addresses")
         return set(on_mem_set)
 
-    def set_spad_random(self):
+    def set_spm_random(self):
         on_mem_set = []
         vector_bytes = self.emb_dim * self.n_format_byte
         vector_stride = ((vector_bytes + self.mem_gran - 1) // self.mem_gran) * self.mem_gran
         avail_space = list(itertools.product(range(self.num_tables), range(self.vectors_per_table)))
         random.shuffle(avail_space)
-        avail_space = avail_space[:int(self.spad_size/self.access_per_vector)]
-        with tqdm(total=self.spad_size, desc="Setting spad") as pbar:
+        avail_space = avail_space[:int(self.spm_size/self.access_per_vector)]
+        with tqdm(total=self.spm_size, desc="Setting spm") as pbar:
             for pair in avail_space:
                 table_base = pair[0] * self.vectors_per_table * vector_stride
                 row_base = pair[1] * vector_stride
@@ -392,7 +392,7 @@ class SpadPolicy(OnmemPolicy):
                     pbar.update(1)
         return set(on_mem_set)
 
-    def set_spad_oracle(self):
+    def set_spm_oracle(self):
         end_batch = min(self.batch_counter + self.prof_period, len(self.emb_dataset))
         access_freq = Counter()
         for batch_idx in range(self.batch_counter, end_batch):
@@ -401,11 +401,11 @@ class SpadPolicy(OnmemPolicy):
                 for addr in table.flatten():
                     access_freq[addr] += 1
         most_common = access_freq.most_common()
-        top_accesses = most_common[:min(self.spad_size, len(most_common))]
+        top_accesses = most_common[:min(self.spm_size, len(most_common))]
         return set(x[0] for x in top_accesses)
 
     def post_access_processing(self, hit, tag, index, vec):
-        if self.spad_policy == "spad_oracle":
+        if self.spm_policy == "spm_oracle":
             # This logic is handled in the main simulation loop of the driver
             pass
 
@@ -439,7 +439,7 @@ class ProfilePolicy(OnmemPolicy):
 
         self.num_tables = len(self.emb_dataset[0])
         self.access_per_vector = np.ceil(self.emb_dim * self.n_format_byte / self.mem_gran).astype(np.int32)
-        self.spad_size = np.floor(self.mem_size / self.mem_gran).astype(np.int32)
+        self.spm_size = np.floor(self.mem_size / self.mem_gran).astype(np.int32)
 
         # Keep legacy behavior for profile SRRIP unless overridden by config.
         self.cache_way = cache_config.get('way', 0) or 128
@@ -450,19 +450,19 @@ class ProfilePolicy(OnmemPolicy):
         self.rrpv_insert = cache_config.get('rrpv_insert', 14)
 
         self.access_results = []
-        self.spad_load_results = []
+        self.spm_load_results = []
         self.logger_results = []
 
         self._batch_hit = 0
         self._batch_miss = 0
-        self._batch_spad_load = 0
+        self._batch_spm_load = 0
         self._batch_logger_hit = 0
         self._batch_logger_miss = 0
 
     def initialize(self):
         if self.profile_policy == "profile_dynamic_cache":
-            self.logger_size = self.spad_size
-            self.logger = LRU_module(self.logger_size)
+            self.logger_size = self.spm_size
+            self.logger = LRUModule(self.logger_size)
         elif self.profile_policy == "profile_dynamic_SRRIP":
             self.logger = [np.zeros((0, 2), dtype=np.int64) for _ in range(self.cache_set)]
         elif self.profile_policy == "profile_dynamic_count":
@@ -473,26 +473,26 @@ class ProfilePolicy(OnmemPolicy):
         else:
             raise NotImplementedError(f"Profile policy {self.profile_policy} not implemented")
 
-        self.on_mem = self._set_spad()
+        self.on_mem = self._set_spm()
 
     def begin_batch(self, batch_idx):
         self._batch_hit = 0
         self._batch_miss = 0
-        self._batch_spad_load = 0
+        self._batch_spm_load = 0
         self._batch_logger_hit = 0
         self._batch_logger_miss = 0
 
     def end_batch(self, batch_idx):
         self.access_results.append([self._batch_hit, self._batch_miss])
-        self.spad_load_results.append(self._batch_spad_load)
+        self.spm_load_results.append(self._batch_spm_load)
         if self.profile_policy in {"profile_dynamic_cache", "profile_dynamic_SRRIP"}:
             self.logger_results.append([self._batch_logger_hit, self._batch_logger_miss])
 
     def refresh_on_mem(self):
-        self.on_mem = self._set_spad()
-        self._batch_spad_load += self.spad_size
+        self.on_mem = self._set_spm()
+        self._batch_spm_load += self.spm_size
 
-    def _set_spad(self):
+    def _set_spm(self):
         on_mem_set = []
         vector_bytes = self.emb_dim * self.n_format_byte
         vector_stride = ((vector_bytes + self.mem_gran - 1) // self.mem_gran) * self.mem_gran
@@ -516,7 +516,7 @@ class ProfilePolicy(OnmemPolicy):
                             this_addr = table_base + row_base + dim_offset
                             on_mem_set.append(this_addr)
                             counter += 1
-                            if counter == self.spad_size:
+                            if counter == self.spm_size:
                                 break_flag = True
                                 break
                         if break_flag:
@@ -526,9 +526,9 @@ class ProfilePolicy(OnmemPolicy):
                 on_mem_arr = np.asarray(on_mem_set, dtype=np.int64)
             else:
                 if self.profile_policy == "profile_dynamic_cache":
-                    on_mem_arr = self.logger.return_as_array()[:self.spad_size]
+                    on_mem_arr = self.logger.return_as_array()[:self.spm_size]
                 else:
-                    on_mem_arr = np.zeros(self.spad_size, dtype=np.int64)
+                    on_mem_arr = np.zeros(self.spm_size, dtype=np.int64)
                     for i in range(self.cache_set):
                         this_logger_len = len(self.logger[i])
                         if this_logger_len < self.cache_way:
@@ -553,7 +553,7 @@ class ProfilePolicy(OnmemPolicy):
                             this_addr = table_base + row_base + dim_offset
                             on_mem_set.append(this_addr)
                             counter += 1
-                            if counter == self.spad_size:
+                            if counter == self.spm_size:
                                 break_flag = True
                                 break
                         if break_flag:
@@ -563,7 +563,7 @@ class ProfilePolicy(OnmemPolicy):
                 self.counter_set = 1
                 on_mem_arr = np.asarray(on_mem_set, dtype=np.int64)
             else:
-                vectors_needed = self.spad_size // self.access_per_vector
+                vectors_needed = self.spm_size // self.access_per_vector
                 flat_indices = np.argpartition(self.counter_arr.ravel(), -vectors_needed)[-vectors_needed:]
 
                 temp = flat_indices % (self.vectors_per_table * len(self.index_trace[0]))
@@ -575,7 +575,7 @@ class ProfilePolicy(OnmemPolicy):
                 row_base = vector_indices[:, None] * vector_stride
 
                 addresses = table_base + row_base + dim_offsets
-                on_mem_arr = addresses.ravel()[:self.spad_size]
+                on_mem_arr = addresses.ravel()[:self.spm_size]
                 self.counter_arr = np.zeros((1, len(self.index_trace[0]), self.vectors_per_table), dtype=np.int64)
 
         else:

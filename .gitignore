@@ -6,8 +6,6 @@ src/__pycache__
 ### Temporal or Ongoing Codes
 src/ongoing_cpp
 src/test_lru_cache.py
-src/_deprecated/MemoryModel_0311_2328.py
-src/_deprecated/MemoryModel_backup.py
 
 ### Temporal Scripts
 dlrm_validation_batches.sh
@@ -52,6 +50,7 @@ EONSIM_IMPLEMENTATION.md
 PERF_MODEL_IMPLEMENTATION.md
 REMAINING_ISSUES.md
 TODO.md
+TODO_MEMORY_MODEL.md
 tools/mNPUsim/mnpusim
 workload_configs/vdb.yaml
 configs/cache_OPT_twolevel.yaml
