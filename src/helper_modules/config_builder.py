@@ -9,7 +9,7 @@ from .config_loader import ConfigLoader
 @dataclass
 class SimConfig:
     debug: bool
-    matrix_ops_csv_path: str
+    matrix_ops: dict
     emb_dim: int
     embsize: str
     num_indices_per_lookup: int
@@ -167,7 +167,7 @@ def build_sim_config(args):
 
     emb_conf = cfg_loader.get_embedding_config()
     gen_conf = cfg_loader.get_general_config()
-    matrix_ops_csv_path = cfg_loader.get_matrix_ops_config_path()
+    matrix_ops = cfg_loader.get_matrix_ops_config()
 
     raw_workload_type = gen_conf.get('workload_type', '')
     workload_type = str(raw_workload_type).strip().lower()
@@ -200,7 +200,8 @@ def build_sim_config(args):
     fname = args.data_generation
 
     if debug:
-        print(f"[DEBUG] Matrix Ops CSV Config Path: {matrix_ops_csv_path}")
+        has_matrix = matrix_ops is not None
+        print(f"[DEBUG] Matrix Ops config present: {has_matrix}")
     if debug:
         print(f"[DEBUG] Generated Embedding Size String: {embsize[:50]}...")
 
@@ -346,7 +347,7 @@ def build_sim_config(args):
 
     return SimConfig(
         debug=debug,
-        matrix_ops_csv_path=matrix_ops_csv_path,
+        matrix_ops=matrix_ops,
         emb_dim=emb_dim,
         embsize=embsize,
         num_indices_per_lookup=num_indices_per_lookup,

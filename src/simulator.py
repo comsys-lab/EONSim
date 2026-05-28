@@ -267,20 +267,22 @@ if __name__ == "__main__":
     ## Run Simulation for Matrix Operations ###
     ###########################################
     
-    if sim_cfg.matrix_ops_csv_path and os.path.exists(sim_cfg.matrix_ops_csv_path):
+    if sim_cfg.matrix_ops:
         helper.set_timer()
         print("\n[Matrix Operations Simulation]")
-        
+        topology_name = os.path.basename(args.workload_config)
+
         run_matrix_simulation(
-            sim_cfg.matrix_ops_csv_path,
+            sim_cfg.matrix_ops['layers_text'],
             sim_cfg.scalesim_hw_config,
-            mnk_flag="gemm",
+            mnk_flag=sim_cfg.matrix_ops['format'],
+            topology_name=topology_name,
             output_dir=sim_cfg.output_dir,
             output_filename=sim_cfg.output_filename,
             debug=sim_cfg.debug
         )
         helper.end_timer("matrix operations simulation")
     else:
-        print("[WARNING] Matrix operations CSV config not found or not provided. Skipping matrix simulation.")
+        print("[INFO] No matrix_operation section in workload config. Skipping matrix simulation.")
 
 

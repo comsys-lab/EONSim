@@ -49,19 +49,25 @@ class Helper:
         )
 
 
+def _title_row(title, width):
+    title_decorated = f"《 {title} 》"
+    display_w = len(title) + 6  # 《(2cols) + ' ' + title + ' ' + 》(2cols)
+    left = (width - display_w) // 2
+    right = width - display_w - left
+    return "║" + "▒"*left + title_decorated + "▒"*right + "║"
+
+
 def print_styled_header(title):
     width = 100
-    title_decorated = f"《 {title} 》"
     print("\n╔" + "═"*width + "╗")
-    print("║" + "▒"*(width//2-len(title_decorated)//2-1) + title_decorated + "▒"*(width//2-len(title_decorated)//2-1) + "║")
+    print(_title_row(title, width))
     print("╚" + "═"*width + "╝")
 
 
 def print_styled_box(title, content_lines):
     width = 100
-    title_decorated = f"《 {title} 》"
     print("\n╔" + "═"*width + "╗")
-    print("║" + "▒"*(width//2-len(title_decorated)//2-1) + title_decorated + "▒"*(width//2-len(title_decorated)//2-1) + "║")
+    print(_title_row(title, width))
     print("╠" + "═"*width + "╣")
     for line in content_lines:
         print("║ " + line.ljust(width-2) + " ║")

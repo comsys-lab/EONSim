@@ -1,12 +1,14 @@
 import csv
+import io
 import numpy as np
 import os
 from . import matrix_single_core_sim
 from .matrix_single_core_sim import scale_up_runtime, scale_up_buf_access, scale_up_off_access
 
 class Accelerator:
-    def __init__(self, topology_path, hw_config, mnk_flag, output_dir=None, output_filename=None, debug=False):
-        self.topology_path = ""
+    def __init__(self, topology_text, hw_config, mnk_flag, topology_name="workload", output_dir=None, output_filename=None, debug=False):
+        self.topology_text = ""
+        self.topology_name = topology_name
         self.mnk_flag = "mnk"
         self.output_dir = output_dir
         self.output_filename = output_filename
@@ -17,10 +19,10 @@ class Accelerator:
         self.dprint = print if debug else lambda *a, **k: None
         matrix_single_core_sim.DEBUG = debug
 
-        self.setup_params(topology_path, hw_config, mnk_flag)
+        self.setup_params(topology_text, hw_config, mnk_flag)
 
-    def setup_params(self, topology_path, hw_config, mnk_flag):
-        self.topology_path = topology_path
+    def setup_params(self, topology_text, hw_config, mnk_flag):
+        self.topology_text = topology_text
         self.mnk_flag = mnk_flag
 
         self.setup_topo()
@@ -54,9 +56,9 @@ class Accelerator:
     
     def setup_topo(self):
         self.mnk_topo = []
-        
+
         try:
-            with open(self.topology_path, 'r') as topo_file:
+            with io.StringIO(self.topology_text) as topo_file:
                 csv_reader = csv.reader(topo_file)
                 
                 for row in csv_reader:
@@ -403,7 +405,7 @@ class Accelerator:
         return runtime_this_layer
 
     def save_results(self):
-        topology_name = os.path.splitext(os.path.basename(self.topology_path))[0]
+        topology_name = self.topology_name
 
         if self.output_dir:
             output_dir = self.output_dir

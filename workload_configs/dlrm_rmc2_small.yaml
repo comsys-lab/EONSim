@@ -1,9 +1,16 @@
 workload_type: dlrm
 num_format: 32  # FP32 assumed
 
-# Embedding Layer Configuration
-embedding_layer:
+embedding_vector_operation:
   embedding_dim: 128
   vectors_per_table: 500000
   num_tables: 60
   pooling_factor: 120
+
+matrix_operation:
+  format: gemm
+  layers: |
+    bot_mlp1, 256, 128, 256
+    bot_mlp2, 256, 128, 128
+    top_mlp1, 256, 64, 128
+    top_mlp2, 256, 1, 64
