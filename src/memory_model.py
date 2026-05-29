@@ -5,6 +5,17 @@ import math
 import tempfile
 from helper_modules.helper import print_styled_box
 
+# Fixed mNPUsim inputs that EONSim always uses.
+# The systolic array spec does not change off-chip memory results, since EONSim feeds mNPUsim its own embedding access trace instead of running a model on it.
+MNPUSIM_ARCH_CONFIG = "arch_config/core_architecture_list/tpu.txt"
+
+# Minimal placeholder DNN that makes mNPUsim replay the injected embedding trace.
+# It belongs to the replay mechanism, not a real workload.
+MNPUSIM_REPLAY_NETWORK = "network_config/netconfig_list/single/test1_network.txt"
+
+# mNPUsim misc options such as PTW partitioning. EONSim keeps the mNPUsim defaults.
+MNPUSIM_MISC_CONFIG = "misc_config/single.cfg"
+
 class MemoryModel:
     def __init__(
         self,
@@ -333,12 +344,12 @@ class MemoryModel:
         
         mnpusim_cmd = [
             self.mnpusim_path + "/mnpusim",
-            "arch_config/core_architecture_list/tpu.txt",
-            "network_config/netconfig_list/single/test1_network.txt",
+            MNPUSIM_ARCH_CONFIG,
+            MNPUSIM_REPLAY_NETWORK,
             dram_config_path,
             npumem_config_path,
             self.eonsim_results_dir_name,  # Use the dynamic directory name
-            "misc_config/single.cfg",
+            MNPUSIM_MISC_CONFIG,
             trace_file_path
         ]
         
@@ -420,25 +431,21 @@ class MemoryModel:
         self._apply_analytical_model()
     
     def cleanup_intermediate_directory(self):
-        """Remove the intermediate directory after simulation"""
         if os.path.exists(self.intermediate_dir):
             shutil.rmtree(self.intermediate_dir)
             if self.debug: print(f"[DEBUG] Cleaned up intermediate directory: {self.intermediate_dir}")
             
     def cleanup_eonsim_results_directory(self):
-        """Remove the eonsim_results directory after simulation"""
         if os.path.exists(self.eonsim_results_dir):
             shutil.rmtree(self.eonsim_results_dir)
             if self.debug: print(f"[DEBUG] Cleaned up eonsim_results directory: {self.eonsim_results_dir}")
 
     def cleanup_eonsim_config_directory(self):
-        """Remove the per-run eonsim_config directory after simulation."""
         if self.eonsim_config_dir and os.path.exists(self.eonsim_config_dir):
             shutil.rmtree(self.eonsim_config_dir)
             if self.debug: print(f"[DEBUG] Cleaned up eonsim_config directory: {self.eonsim_config_dir}")
             
     def do_memory_simulation(self):
-        """Main method to run the complete memory simulation pipeline"""
         if self.debug: print("[DEBUG] Starting off-chip memory simulation...")
         if self.debug: print(f"[DEBUG] Requested DRAM .ini: {self.mnpusim_params.get('dram_config', '')}")
 

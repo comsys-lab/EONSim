@@ -27,7 +27,6 @@ class CoreAccessIterator:
         return total
     
     def has_next(self):
-        """Check if iterator has more accesses"""
         return self.current_access < self.total_accesses
     
     def get_next(self):

@@ -325,10 +325,18 @@ class SpmPolicy(OnmemPolicy):
         else:
             raise NotImplementedError(f"SPM policy {self.spm_policy} not implemented")
 
-    def set_spm_naive(self):
-        on_mem_set = []
+    def _iter_spm_addresses(self, table_start, table_end):
         vector_bytes = self.emb_dim * self.n_format_byte
         vector_stride = ((vector_bytes + self.mem_gran - 1) // self.mem_gran) * self.mem_gran
+        for t_i in range(table_start, table_end):
+            table_base = t_i * self.vectors_per_table * vector_stride
+            for v_i in range(self.vectors_per_table):
+                row_base = v_i * vector_stride
+                for d_i in range(self.access_per_vector):
+                    yield table_base + row_base + self.mem_gran * d_i
+
+    def set_spm_naive(self):
+        on_mem_set = []
 
         # Partition tables across cores (same logic as CoreOnmem._partition_tables_across_cores)
         tables_per_core = self.num_tables // self.num_cores
@@ -348,25 +356,13 @@ class SpmPolicy(OnmemPolicy):
                 
                 # Allocate vectors_per_core for this core from its assigned tables
                 core_counter = 0
-                break_flag = False
-                
-                for t_i in range(start_idx, table_end):
-                    table_base = t_i * self.vectors_per_table * vector_stride
-                    for v_i in range(self.vectors_per_table):
-                        row_base = v_i * vector_stride
-                        for d_i in range(self.access_per_vector):
-                            dim_offset = self.mem_gran * d_i
-                            this_addr = table_base + row_base + dim_offset
-                            on_mem_set.append(this_addr)
-                            core_counter += 1
-                            counter += 1
-                            pbar.update(1)
-                            
-                            if core_counter >= vectors_per_core:
-                                break_flag = True
-                                break
-                        if break_flag: break
-                    if break_flag: break
+                for addr in self._iter_spm_addresses(start_idx, table_end):
+                    on_mem_set.append(addr)
+                    core_counter += 1
+                    counter += 1
+                    pbar.update(1)
+                    if core_counter >= vectors_per_core:
+                        break
 
                 # Move to next core's table range
                 start_idx = table_end
@@ -492,6 +488,16 @@ class ProfilePolicy(OnmemPolicy):
         self.on_mem = self._set_spm()
         self._batch_spm_load += self.spm_size
 
+    def _iter_spm_addresses(self, table_start, table_end):
+        vector_bytes = self.emb_dim * self.n_format_byte
+        vector_stride = ((vector_bytes + self.mem_gran - 1) // self.mem_gran) * self.mem_gran
+        for t_i in range(table_start, table_end):
+            table_base = t_i * self.vectors_per_table * vector_stride
+            for v_i in range(self.vectors_per_table):
+                row_base = v_i * vector_stride
+                for d_i in range(self.access_per_vector):
+                    yield table_base + row_base + self.mem_gran * d_i
+
     def _set_spm(self):
         on_mem_set = []
         vector_bytes = self.emb_dim * self.n_format_byte
@@ -506,22 +512,10 @@ class ProfilePolicy(OnmemPolicy):
 
             if logger_empty:
                 counter = 0
-                break_flag = False
-                for t_i in range(self.num_tables):
-                    table_base = t_i * self.vectors_per_table * vector_stride
-                    for v_i in range(self.vectors_per_table):
-                        row_base = v_i * vector_stride
-                        for d_i in range(self.access_per_vector):
-                            dim_offset = self.mem_gran * d_i
-                            this_addr = table_base + row_base + dim_offset
-                            on_mem_set.append(this_addr)
-                            counter += 1
-                            if counter == self.spm_size:
-                                break_flag = True
-                                break
-                        if break_flag:
-                            break
-                    if break_flag:
+                for addr in self._iter_spm_addresses(0, self.num_tables):
+                    on_mem_set.append(addr)
+                    counter += 1
+                    if counter == self.spm_size:
                         break
                 on_mem_arr = np.asarray(on_mem_set, dtype=np.int64)
             else:
@@ -543,22 +537,10 @@ class ProfilePolicy(OnmemPolicy):
         elif self.profile_policy == "profile_dynamic_count":
             if self.counter_set == 0:
                 counter = 0
-                break_flag = False
-                for t_i in range(self.num_tables):
-                    table_base = t_i * self.vectors_per_table * vector_stride
-                    for v_i in range(self.vectors_per_table):
-                        row_base = v_i * vector_stride
-                        for d_i in range(self.access_per_vector):
-                            dim_offset = self.mem_gran * d_i
-                            this_addr = table_base + row_base + dim_offset
-                            on_mem_set.append(this_addr)
-                            counter += 1
-                            if counter == self.spm_size:
-                                break_flag = True
-                                break
-                        if break_flag:
-                            break
-                    if break_flag:
+                for addr in self._iter_spm_addresses(0, self.num_tables):
+                    on_mem_set.append(addr)
+                    counter += 1
+                    if counter == self.spm_size:
                         break
                 self.counter_set = 1
                 on_mem_arr = np.asarray(on_mem_set, dtype=np.int64)

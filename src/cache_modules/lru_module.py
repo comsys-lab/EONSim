@@ -91,7 +91,6 @@ class LRUModule:
         return None
 
     def is_empty(self):
-        """Check if cache is empty"""
         return self.size == 0
 
     def return_as_array(self):

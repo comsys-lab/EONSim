@@ -82,7 +82,6 @@ class SRRIPModule:
         return result
     
     def is_empty(self):
-        """Check if cache is empty"""
         return len(self.cache_entries) == 0
     
     def get_num_entries(self):
