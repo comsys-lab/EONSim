@@ -1,8 +1,5 @@
 import numpy as np
 import argparse
-from tqdm import tqdm
-import multiprocessing as mp
-import os
 
 ## We implement this module based on this code: https://github.com/rishucoding/reproduce_MICRO24_GPU_DLRM_inference by RJ
 
@@ -19,41 +16,85 @@ def dash_separated_ints(value):
 
     return value
 
-# Define the worker function outside of the class method to avoid pickle issues
-def _process_batch_worker(args):
-    """Standalone worker function that processes a single batch"""
-    batch_idx, batch_data, table_count, vector_length, access_per_vector, emb_dim, n_format_byte, mem_gran, rows_per_table = args
-    
-    # Create result container for this batch
-    batch_addr_trace = [
-        np.ones(int(vector_length * access_per_vector), dtype=np.int64)
-        for _ in range(table_count)
-    ]
-    
-    # Process this batch
-    for nt in range(table_count):
-        vector_bytes = emb_dim * n_format_byte
-        # Align each vector footprint to mem_gran.
-        vector_stride = ((vector_bytes + mem_gran - 1) // mem_gran) * mem_gran
-        table_base = nt * rows_per_table * vector_stride
+class AddrGenerator:
+    """Computes embedding-access byte addresses from the vector-index trace (lS_i), so the
+    full address trace does not need to be stored; only lS_i is kept. Supports
+    len()/indexing/iteration and can be indexed as emb_dataset[nb][nt]. A one-batch cache
+    covers repeated access within a batch (batches are processed in order).
+    """
 
-        for vec in range(len(batch_data[nt])):
-            row_base = int(batch_data[nt][vec]) * vector_stride
+    def __init__(self, lS_i, vector_stride, mem_gran, access_per_vector, rows_per_table):
+        self.lS_i = lS_i
+        self.vector_stride = int(vector_stride)
+        self.mem_gran = int(mem_gran)
+        # Number of cache-line-sized accesses per embedding vector.
+        self.apv = int(access_per_vector)
+        self.rows_per_table = int(rows_per_table)
+        self.nbatches = len(lS_i)
+        self.num_tables = len(lS_i[0]) if self.nbatches else 0
+        self._dim_offsets = np.arange(self.apv, dtype=np.int64) * self.mem_gran
+        self._cache_nb = -1
+        self._cache_tables = None
 
-            for dim in range(access_per_vector):
-                dim_offset = mem_gran * dim
-                this_addr = table_base + row_base + dim_offset
+    def table_addrs(self, nb, nt):
+        """Byte addresses (1D int64) for one batch/table."""
+        idx = np.asarray(self.lS_i[nb][nt], dtype=np.int64)
+        table_base = nt * self.rows_per_table * self.vector_stride
+        addr = table_base + idx[:, None] * self.vector_stride + self._dim_offsets[None, :]
+        return addr.reshape(-1)
 
-                batch_addr_trace[nt][vec * access_per_vector + dim] = this_addr
-                
-    return batch_addr_trace
+    def _batch_tables(self, nb):
+        if nb != self._cache_nb:
+            self._cache_tables = [self.table_addrs(nb, nt) for nt in range(self.num_tables)]
+            self._cache_nb = nb
+        return self._cache_tables
+
+    def flat_addrs(self):
+        """The whole trace flattened in batch -> table -> vector order (used by OPT)."""
+        return np.concatenate([self.table_addrs(nb, nt)
+                               for nb in range(self.nbatches)
+                               for nt in range(self.num_tables)])
+
+    # Read-only indexing as emb_dataset[nb][nt].
+    def __len__(self):
+        return self.nbatches
+
+    def __getitem__(self, nb):
+        return _BatchAddrView(self, nb)
+
+    def __iter__(self):
+        for nb in range(self.nbatches):
+            yield _BatchAddrView(self, nb)
+
+
+class _BatchAddrView:
+    """View of one batch's per-table address arrays. len() returns the table count without
+    generating; indexing or iterating triggers generation (cached by AddrGenerator)."""
+
+    __slots__ = ("_gen", "_nb")
+
+    def __init__(self, gen, nb):
+        self._gen = gen
+        self._nb = nb
+
+    def __len__(self):
+        return self._gen.num_tables
+
+    def __getitem__(self, nt):
+        tables = self._gen._batch_tables(self._nb)
+        return tables[nt]  # int index -> one ndarray; slice -> list of ndarrays
+
+    def __iter__(self):
+        return iter(self._gen._batch_tables(self._nb))
+
 
 class ReqGenerator:
     def __init__(self, nbatches, n_format_byte, embsize, emb_dim, bsz, fname, num_indices_per_lookup, mem_gran, debug=False):
         self.dataset_gen = None
         self.lS_o = []
         self.lS_i = []
-        self.addr_trace = []
+        self.addr_trace = None   # addresses come from addr_gen (set in index_to_addr)
+        self.addr_gen = None
         self.debug = debug
 
         self.nbatches = nbatches
@@ -66,102 +107,65 @@ class ReqGenerator:
         self.mem_gran = mem_gran
 
         self.access_per_vector = np.ceil(self.emb_dim * self.n_format_byte / self.mem_gran).astype(np.int32)
-        
-    def open_gen(self, name, rows):
-        with open(name) as f:
-            idx = list(filter(lambda x: x < rows, map(int, f.readlines())))
-        while True:
-            for x in idx:
-                yield x
 
-    def get_gen(self, rows):
-        if self.dataset_gen is None:
-            self.dataset_gen = self.open_gen(self.fname, int(rows))
-        return self.dataset_gen
-
-    def trace_read_input_batch(self, ln_emb):
-        cur_gen = self.get_gen(ln_emb[0])
-
-        lS_emb_offsets = []
-        lS_emb_indices = []
-        for size in ln_emb:
-            lS_batch_offsets = []
-            lS_batch_indices = []
-            offset = 0
-            for _ in range(self.bsz):
-                sparse_group_size = np.int64(self.num_indices_per_lookup)
-                lS_batch_offsets += [offset]
-                lS_batch_indices += [x for _, x in zip(range(sparse_group_size), cur_gen)]
-                offset += sparse_group_size
-            lS_emb_offsets.append(np.array(lS_batch_offsets, dtype=np.int64))
-            lS_emb_indices.append(np.array(lS_batch_indices, dtype=np.int64))
-
-        return (lS_emb_offsets, lS_emb_indices)
+    def _load_filtered_indices(self, rows):
+        # Read the whole dataset once and keep only indices < rows (= rows_per_table).
+        # np.array parses in C, which is faster than a Python int() loop.
+        with open(self.fname) as f:
+            raw = np.array(f.read().split(), dtype=np.int64)
+        return raw[raw < np.int64(rows)]
 
     def data_gen(self):
+        # Build the index trace by reading the filtered index stream in order
+        #     batch -> table -> sample -> k (k in range(num_indices_per_lookup)),
+        # i.e. global position p = (((j*num_tables + t)*bsz) + s)*num_indices_per_lookup + k,
+        # value filtered_idx[p % len]. np.take(..., mode="wrap") does this in one call.
+        # Processing one batch at a time keeps the temporary index array to a single batch.
         ln_emb = np.fromstring(self.embsize, dtype=int, sep="-")
         ln_emb = np.asarray(ln_emb, dtype=np.int32)
 
-        for j in range(0, self.nbatches):
-            offsets, indices = self.trace_read_input_batch(ln_emb)
-            self.lS_o.append(offsets)
-            self.lS_i.append(indices)
-            
-    def index_to_addr(self):
-        # init addr_trace array
-        self.addr_trace = [
-            [np.ones(int(len(self.lS_i[0][0]) * self.access_per_vector), dtype=np.int64) 
-             for _ in range(len(self.lS_i[0]))] 
-            for _ in range(self.nbatches)
-        ]
-        if self.debug: print("[DEBUG] lS_i shape: {}".format(np.array(self.lS_i).shape))
-        if self.debug: print("[DEBUG] addr_trace shape: {}".format(np.array(self.addr_trace).shape))
-        
-        # convert indices in self.lS_i to memory address...
-        ln_emb = np.fromstring(self.embsize, dtype=int, sep="-")
-        ln_emb = np.asarray(ln_emb, dtype=np.int32)
-        rows_per_table = ln_emb[0]
-        
-        # Allow external orchestration to cap req-generation multiprocessing.
-        env_reqgen_cores = os.getenv("EONSIM_REQGEN_CORES", "").strip()
-        if env_reqgen_cores:
-            try:
-                num_cores = max(1, int(env_reqgen_cores))
-            except ValueError:
-                num_cores = max(1, mp.cpu_count() - 1)
-        else:
-            # Default behavior: use all but one logical CPU.
-            num_cores = max(1, mp.cpu_count() - 1)
+        filtered = self._load_filtered_indices(int(ln_emb[0]))
+        num_tables = int(len(ln_emb))
+        K = int(self.num_indices_per_lookup)
+        per_table = self.bsz * K
+        per_batch = num_tables * per_table
 
-        # Batch-level parallelism upper bound.
-        num_cores = min(num_cores, max(1, len(self.lS_i)))
-        print(f"Starting multiprocessing with {num_cores} cores...")
-        
-        # Prepare data for each batch to avoid sharing the entire self
-        batch_args = []
-        for batch_idx in range(len(self.lS_i)):
-            # Create a tuple with all necessary data for processing this batch
-            args = (
-                batch_idx,                  # Current batch index
-                self.lS_i[batch_idx],       # The batch data
-                len(self.lS_i[0]),          # Number of tables
-                len(self.lS_i[0][0]),       # Vector length
-                self.access_per_vector,     # Access per vector
-                self.emb_dim,               # Embedding dimension
-                self.n_format_byte,         # Format bytes
-                self.mem_gran,              # Memory granularity
-                rows_per_table              # Rows per table
+        # Offsets are the same for every (batch, table): [0, K, 2K, ..., (bsz-1)*K].
+        offsets_template = np.arange(self.bsz, dtype=np.int64) * K
+
+        for j in range(self.nbatches):
+            start = j * per_batch
+            flat = np.take(
+                filtered,
+                np.arange(start, start + per_batch, dtype=np.int64),
+                mode="wrap",
             )
-            batch_args.append(args)
-        
-        # Create a process pool and distribute batches
-        with mp.Pool(processes=num_cores) as pool:
-            # Map the function to batch arguments and display progress
-            with tqdm(total=len(self.lS_i), desc="Processing batches") as pbar:
-                for nb, batch_result in enumerate(pool.imap(_process_batch_worker, batch_args)):
-                    # Store the result in the main addr_trace array
-                    self.addr_trace[nb] = batch_result
-                    pbar.update(1)
+            batch_indices = flat.reshape(num_tables, per_table)
+            # Rows of a C-contiguous array are contiguous int64 views (safe to pickle).
+            self.lS_i.append([batch_indices[t] for t in range(num_tables)])
+            self.lS_o.append([offsets_template for _ in range(num_tables)])
+
+    def index_to_addr(self):
+        # Build an AddrGenerator that computes addresses from self.lS_i. The on-chip model
+        # and policies index it as emb_dataset[nb][nt].
+        ln_emb = np.fromstring(self.embsize, dtype=int, sep="-")
+        ln_emb = np.asarray(ln_emb, dtype=np.int32)
+        rows_per_table = int(ln_emb[0])
+
+        if self.debug:
+            print("[DEBUG] lS_i shape: {}".format(np.array(self.lS_i).shape))
+
+        vector_bytes = self.emb_dim * self.n_format_byte
+        vector_stride = ((vector_bytes + self.mem_gran - 1) // self.mem_gran) * self.mem_gran
+
+        self.addr_gen = AddrGenerator(
+            self.lS_i,
+            vector_stride=vector_stride,
+            mem_gran=self.mem_gran,
+            access_per_vector=int(self.access_per_vector),
+            rows_per_table=rows_per_table,
+        )
+        self.addr_trace = self.addr_gen   # the simulator reads this as emb_dataset
 
     def get_unique_vector_size_stats(self):
         # Quick workload-footprint diagnostics from vector-index trace.
@@ -207,29 +211,29 @@ class ReqGenerator:
         first_batch_addrs = []
         for table in self.addr_trace[0]:
             first_batch_addrs.extend(table)
-        
+
         total_addrs = len(first_batch_addrs)  # Total number of addresses including duplicates
         first_batch_set = set(first_batch_addrs)  # Set for intersection
-        
+
         print("\nBatch Access Pattern Analysis:")
         print("--------------------------------")
         print(f"Total addresses in each batch: {total_addrs}")
         print("Overlap percentages with first batch (Batch 0):")
-        
+
         # Compare with all batches (including batch 0)
         for batch_idx in range(0, len(self.addr_trace)):
             current_batch_addrs = []
             for table in self.addr_trace[batch_idx]:
                 current_batch_addrs.extend(table)
-            
+
             # Calculate overlap using sets for unique addresses
             current_batch_set = set(current_batch_addrs)
             overlap_addrs = first_batch_set.intersection(current_batch_set)
-            
+
             # Calculate percentage based on total addresses (including duplicates)
             overlap_count = sum(1 for addr in first_batch_addrs if addr in current_batch_set)
             overlap_percentage = (overlap_count / total_addrs) * 100
-            
+
             print(f"Batch {batch_idx}: {overlap_percentage:.2f}%")
 
 if __name__ == "__main__":

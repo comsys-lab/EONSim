@@ -138,6 +138,7 @@ if __name__ == "__main__":
             "mem_latency": sim_cfg.global_onmem_latency,
         },
         index_trace=reqgen.lS_i,
+        warmup_batches=sim_cfg.warmup_batches,
         debug=sim_cfg.debug,
     )
     core_onmem_obj.set_policy(sim_cfg.mem_policy)

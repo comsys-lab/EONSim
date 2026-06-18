@@ -58,7 +58,7 @@ class CoreAccessIterator:
 
 
 class CoreOnmem:
-    def __init__(self, mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table=0, mem_gran=0, prof_period=1, mem_latency=1, num_cores=1, onchip_structure="global_only", local_onmem_config=None, global_onmem_config=None, index_trace=None, debug=False):
+    def __init__(self, mem_size, mem_type, cache_config, emb_dim, emb_dataset, n_format_byte, vectors_per_table=0, mem_gran=0, prof_period=1, mem_latency=1, num_cores=1, onchip_structure="global_only", local_onmem_config=None, global_onmem_config=None, index_trace=None, warmup_batches=0, debug=False):
         self.num_cores = num_cores
         self.onchip_structure = onchip_structure
         self.debug = debug
@@ -67,6 +67,9 @@ class CoreOnmem:
         self.local_onmem_config = dict(local_onmem_config) if local_onmem_config else {}
         self.global_onmem_config = dict(global_onmem_config) if global_onmem_config else {}
         self.index_trace = index_trace
+        # Batches 0..warmup_batches-1 are warmup. mNPUsim skips them, so their off-chip
+        # miss addresses are not recorded.
+        self.warmup_batches = int(warmup_batches)
 
         self.mem_policy = "init"
         self.on_mem = np.ones(1)
@@ -145,8 +148,17 @@ class CoreOnmem:
             self.rrpv_bits = self.cache_config.get('rrpv_bits', 0)
             self.rrpv_insert = self.cache_config.get('rrpv_insert', 0)
 
-        self.offmem_trace = [[np.full_like(self.emb_dataset[nb][nt], -1) for nt in range(len(self.emb_dataset[nb]))] for nb in range(len(self.emb_dataset))]
-        if self.debug: print("[DEBUG] self.offmem_trace shape: ({}, {}, {})".format(len(self.offmem_trace), len(self.offmem_trace[0]), len(self.offmem_trace[0][0])))
+        # Off-chip miss trace: one -1-filled array per (batch, table). Warmup batches get
+        # None because their misses are not recorded.
+        self.offmem_trace = [
+            [np.full_like(self.emb_dataset[nb][nt], -1) for nt in range(len(self.emb_dataset[nb]))]
+            if nb >= self.warmup_batches else None
+            for nb in range(len(self.emb_dataset))
+        ]
+        if self.debug:
+            recorded = sum(1 for slot in self.offmem_trace if slot is not None)
+            print("[DEBUG] offmem_trace: {} recorded batch(es), {} warmup skipped".format(
+                recorded, len(self.offmem_trace) - recorded))
     
     def _partition_tables_across_cores(self):
         """Partition embedding tables across multiple cores"""
@@ -321,7 +333,7 @@ class CoreOnmem:
         mask = ((1 << (index_msb - index_lsb + 1)) - 1) << index_lsb
         index_bits = (addr & mask) >> index_lsb    # extract only index bits
         
-        # Ensure index is within bounds for non-power-of-2 cache sets, this is just for 384 MB cache simulation.
+        # Ensure index is within bounds for non-power-of-2 cache sets.
         return index_bits % self.cache_set
 
     def do_simulation(self):
@@ -350,10 +362,14 @@ class CoreOnmem:
             for core_id in range(self.num_cores):  # kept for potential future use
                 self.core_access_results[core_id].append(core_batch_stats[core_id])
 
-        # Verify offmem_trace integrity
-        total_miss = sum(r[1] for r in self.access_results)
+        # Verify offmem_trace integrity over the recorded (non-warmup) batches only.
+        total_miss = sum(self.access_results[nb][1]
+                         for nb in range(len(self.access_results))
+                         if nb >= self.warmup_batches)
         offmem_count = 0
         for nb in range(len(self.offmem_trace)):
+            if self.offmem_trace[nb] is None:
+                continue
             for nt in range(len(self.offmem_trace[nb])):
                 offmem_count += np.sum(self.offmem_trace[nb][nt] != -1)
 
@@ -399,7 +415,8 @@ class CoreOnmem:
                     core_batch_stats[core_id][1] += num_miss
 
                     miss_mask = ~hit_mask
-                    self.offmem_trace[nb][nt][miss_mask] = self.emb_dataset[nb][nt][miss_mask]
+                    if nb >= self.warmup_batches:
+                        self.offmem_trace[nb][nt][miss_mask] = self.emb_dataset[nb][nt][miss_mask]
                     pbar.update(1)
 
         # Update on_mem for oracle policy after each batch.
@@ -438,7 +455,8 @@ class CoreOnmem:
                         else:
                             batch_miss += 1
                             core_batch_stats[core_id][1] += 1
-                            self.offmem_trace[nb][table_id][vec_id] = addr
+                            if nb >= self.warmup_batches:
+                                self.offmem_trace[nb][table_id][vec_id] = addr
 
                         self.policy.post_access_processing(hit, tag, index, vec_id)
                         pbar.update(1)
@@ -466,7 +484,8 @@ class CoreOnmem:
                         else:
                             batch_miss += 1
                             core_batch_stats[core_id][1] += 1
-                            self.offmem_trace[nb][table_id][vec_id] = addr
+                            if nb >= self.warmup_batches:
+                                self.offmem_trace[nb][table_id][vec_id] = addr
 
                         core_policy.post_access_processing(hit, tag, index, vec_id)
                         pbar.update(1)
@@ -513,7 +532,8 @@ class CoreOnmem:
                         else:
                             batch_miss += 1
                             core_batch_stats[core_id][1] += 1
-                            self.offmem_trace[nb][table_id][vec_id] = addr
+                            if nb >= self.warmup_batches:
+                                self.offmem_trace[nb][table_id][vec_id] = addr
 
                         self.policy.post_access_processing(hit, tag, index, vec_id)
                         pbar.update(1)
@@ -561,7 +581,8 @@ class CoreOnmem:
                         else:
                             batch_miss += 1
                             core_batch_stats[core_id][1] += 1
-                            self.offmem_trace[nb][table_id][vec_id] = addr
+                            if nb >= self.warmup_batches:
+                                self.offmem_trace[nb][table_id][vec_id] = addr
 
                         core_policy.post_access_processing(hit, tag, index, vec_id)
                         pbar.update(1)

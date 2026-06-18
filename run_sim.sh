@@ -7,9 +7,9 @@ fi
 
 ### USER CONFIGURATION ####################################
 WORKLOAD="dlrm_dcnv2"
-DATASET_LIST=("dlrm/reuse_high_test.txt") # "dlrm/reuse_high_test.txt" "dlrm/reuse_medium_test.txt" "dlrm/reuse_low_trunc.txt"
+DATASET_LIST=("dlrm/reuse_high_test.txt") 
 
-NUM_BATCH=1
+NUM_BATCH=5
 BS=256
 
 # EONSim skips memory simulation for the warmup batches to speed up the simulation.
